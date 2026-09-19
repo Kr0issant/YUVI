@@ -1,0 +1,11 @@
+[project]
+name = "yuvi"
+version = "0.1.0"
+description = "Utility and Ticket Management Discord Bot for Reinforce Club SST"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "discord-py>=2.7.1",
+    "firebase-admin>=7.6.0",
+    "python-dotenv>=1.2.3",
+]
