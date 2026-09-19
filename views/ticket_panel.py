@@ -74,6 +74,13 @@ class TicketCategorySelect(ui.Select):
         else:
             await interaction.response.send_modal(MiscModal())
 
+        # Reset the dropdown menu so the same option can be selected again immediately
+        try:
+            if interaction.message:
+                await interaction.message.edit(view=TicketPanelView())
+        except Exception as e:
+            print(f"[TicketPanel] Note: Could not reset dropdown state: {e}")
+
 
 class TicketPanelView(ui.View):
     def __init__(self):
