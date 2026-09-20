@@ -11,13 +11,25 @@ class UserManager:
 
     @classmethod
     async def get_user(cls, discord_id: str) -> Optional[Dict[str, Any]]:
-        """Fetch user record from Firestore by Discord ID."""
+        """Fetch user record from Firestore by Discord ID (doc ID or field)."""
         def _sync_get():
             try:
                 db = cls._get_db()
+                # 1. Direct document lookup by discord_id
                 doc = db.collection(USERS_COLLECTION).document(str(discord_id)).get()
                 if doc.exists:
-                    return doc.to_dict()
+                    data = doc.to_dict()
+                    data["doc_id"] = doc.id
+                    return data
+
+                # 2. Query by discord_id field (if doc_id is Firebase UID or email)
+                query = db.collection(USERS_COLLECTION).where("discord_id", "==", str(discord_id)).limit(1)
+                docs = list(query.stream())
+                if docs:
+                    data = docs[0].to_dict()
+                    data["doc_id"] = docs[0].id
+                    return data
+
                 return None
             except Exception as e:
                 print(f"[UserManager] Error fetching user {discord_id}: {e}")
@@ -35,7 +47,7 @@ class UserManager:
                 docs = list(query.stream())
                 if docs:
                     data = docs[0].to_dict()
-                    data["id"] = docs[0].id
+                    data["doc_id"] = docs[0].id
                     return data
                 return None
             except Exception as e:
@@ -46,12 +58,25 @@ class UserManager:
 
     @classmethod
     async def unlink_user(cls, discord_id: str) -> bool:
-        """Delete user record from Firestore."""
+        """Unlink Discord ID from user record in Firestore."""
         def _sync_delete():
             try:
                 db = cls._get_db()
-                db.collection(USERS_COLLECTION).document(str(discord_id)).delete()
-                return True
+                # Check direct doc
+                doc_ref = db.collection(USERS_COLLECTION).document(str(discord_id))
+                if doc_ref.get().exists:
+                    doc_ref.delete()
+                    return True
+
+                # Check query by field
+                query = db.collection(USERS_COLLECTION).where("discord_id", "==", str(discord_id)).limit(1)
+                docs = list(query.stream())
+                if docs:
+                    # Clear discord_id from the user profile or delete
+                    docs[0].reference.update({"discord_id": None})
+                    return True
+
+                return False
             except Exception as e:
                 print(f"[UserManager] Error unlinking user {discord_id}: {e}")
                 return False
