@@ -1,88 +1,91 @@
-# YUVI 🤖
+# YUVI
 
-**Utility, Authentication & Ticket Management Discord Bot for Reinforce Club SST**
-
-YUVI powers the Discord operations for Reinforce Club SST, featuring an asynchronous Firestore-backed **Support & Project Ticket System** and a **Google Account Authentication System** integrated with a high-performance **FastAPI / Uvicorn Server**.
+Discord bot and FastAPI backend service for Reinforce Club SST. Handles Google account authentication (@sst.scaler.com), role assignment, and a Firestore-synchronized support ticket and project management system.
 
 ---
 
-## 🏗️ Architecture & Project Structure
+## Project Structure
 
 ```text
 YUVI/
 ├── cogs/
-│   ├── auth.py               # Member authentication & admin lookup/unlink commands
-│   ├── tickets.py            # Ticket panel, slash commands & real-time message sync
-│   └── db.py                 # Quick DB utility commands
+│   ├── auth.py               # Authentication slash commands & verification views
+│   ├── tickets.py            # Ticket panel, thread lifecycle & chat syncing
+│   └── db.py                 # Direct database utility commands
 ├── models/
 │   ├── __init__.py
-│   └── ticket.py             # Data classes, enums, & Firestore serialization models
+│   └── ticket.py             # Ticket schemas, status enums & Firestore serialization
 ├── utils/
 │   ├── __init__.py
 │   ├── firestore_client.py   # Shared Firestore client initializer
-│   ├── ticket_manager.py     # Async CRUD operations for Firestore tickets
-│   ├── transcript_generator.py # Transcript generation (Text/Markdown)
-│   └── user_manager.py       # Firestore user lookup & unlinking operations
+│   ├── ticket_manager.py     # Async database CRUD for tickets & messages
+│   ├── transcript_generator.py # Formats chat history into text transcripts
+│   └── user_manager.py       # User profile lookups and unlinking
 ├── views/
 │   ├── __init__.py
-│   ├── ticket_panel.py       # Persistent Category Dropdown Select Menu
-│   ├── ticket_modals.py      # Category-tailored interactive modals & thread creation
-│   └── ticket_controls.py   # In-thread controls (Claim, Add Member, Transcript, Close)
+│   ├── ticket_panel.py       # Persistent category dropdown view
+│   ├── ticket_modals.py      # Category-specific intake modals
+│   └── ticket_controls.py   # Thread controls (claim, add member, close, transcript)
 ├── serviceAccountKey.json    # Firebase Admin credentials
-├── server.py                 # FastAPI Application & internal webhook endpoints
-├── yuvi_bot.py               # Main bot subclass and cog loader
+├── server.py                 # FastAPI application, lifecycle manager & webhook routes
+├── yuvi_bot.py               # Custom commands.Bot subclass
 ├── main.py                   # Uvicorn entry point
-└── pyproject.toml            # Project dependencies
+└── pyproject.toml            # Dependencies and project metadata
 ```
 
 ---
 
-## 🔐 Member Authentication Flow
+## Member Authentication
+
+### Workflow
+1. A user triggers `/auth`, `/login`, or clicks the button on the `/setup-auth` verification panel.
+2. The bot checks Firestore to verify if the Discord ID is already linked.
+3. If not linked, the bot returns an ephemeral link button pointing to:
+   ```text
+   {FRONTEND_AUTH_URL}?discord_id={discord_user_id}
+   ```
+4. The user completes Google OAuth with their `@sst.scaler.com` account on the frontend.
+5. The main backend validates the token, domain, and duplicate accounts, saves the profile to Firestore under `users/{discord_id}`, and issues a POST request to YUVI's internal webhook.
+6. YUVI assigns the verified role to the user and sends a confirmation DM.
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor User as Discord Member
+    actor User as Discord User
     participant Bot as YUVI Bot
     participant Web as Frontend Portal
     participant API as Main Backend Server
-    participant DB as Firestore DB
-    participant Server as YUVI FastAPI Server
+    participant DB as Firestore
+    participant Server as YUVI FastAPI Webhook
 
-    User->>Bot: /auth or /login
-    Bot->>DB: Check if discord_id is already linked
-    alt Already Verified
-        Bot-->>User: Ephemeral: "Already verified as student@sst.scaler.com"
-    else Not Verified
-        Bot-->>User: Ephemeral Button: "https://reinforce.club/auth?discord_id=12345"
+    User->>Bot: /auth or panel button
+    Bot->>DB: Query users/{discord_id}
+    alt User already verified
+        Bot-->>User: Ephemeral notice ("Already linked to email")
+    else User unverified
+        Bot-->>User: Ephemeral link: FRONTEND_AUTH_URL?discord_id=...
     end
 
-    User->>Web: Opens link & signs in with Google (@sst.scaler.com)
-    Web->>API: Sends Google account details + discord_id
-    API->>API: Validates @sst.scaler.com, Google token, and duplicate checks
-    API->>DB: Saves user record in users/{discord_id}
-    API->>Server: POST /internal/verify-success (discord_id, email, name)
-    Server->>Bot: Grants "Verified Member" role & DMs confirmation
-    Server-->>API: 200 OK {"success": true, "role_granted": "Verified Member"}
-    API-->>Web: Authentication complete
+    User->>Web: Complete Google SSO (@sst.scaler.com)
+    Web->>API: Submit token + discord_id
+    API->>API: Verify token & @sst.scaler.com domain
+    API->>DB: Store user document
+    API->>Server: POST /internal/verify-success
+    Server->>Bot: Grant Verified Member role & DM user
+    Server-->>API: 200 OK
 ```
 
-### Authentication Slash Commands
-- `/auth` (or `/login`): Sends an ephemeral embed with a direct link button to the login portal.
-- `/whois <member>` *(Admin only)*: Shows linked Google email, full name, and verification date from Firestore.
-- `/whois-email <email>` *(Admin only)*: Shows the Discord member linked to a specific `@sst.scaler.com` email.
-- `/unlink <member>` *(Admin only)*: Deletes the user record from Firestore and removes the verified role from the Discord member.
+### Webhook Specification
 
-### Internal Webhook API
 - **Endpoint**: `POST /internal/verify-success`
-- **Headers (Optional)**: `X-Internal-Secret: your_secret`
-- **Request Body**:
+- **Headers**: `X-Internal-Secret: <string>` (optional, required if `BOT_INTERNAL_SECRET` is set in `.env`)
+- **Body**:
   ```json
   {
     "discord_id": "123456789012345678",
     "email": "student@sst.scaler.com",
     "name": "Full Name",
-    "secret": "optional_secret_here"
+    "secret": "optional_secret_matching_env"
   }
   ```
 - **Response**:
@@ -98,41 +101,72 @@ sequenceDiagram
 
 ---
 
-## 🎫 Ticket System Categories
+## Ticket & SPG System
 
-| Category | Description | Modal Inputs |
+Tickets are stored in Firestore under `tickets/{ticket_id}` and conversations are recorded in `tickets/{ticket_id}/messages/{message_id}` in real time. This keeps Discord threads and the web dashboard in sync.
+
+### Categories & Modals
+
+| Category | Purpose | Modal Fields |
 |---|---|---|
-| **🚀 SPG Registration / Modification** | Student Project Groups (Product, Kaggle, Research) | Project Name & Track, Team Leader & Members, Estimated Duration, Goals & Summary |
-| **⚡ Resource Request** | Cloud/GPU compute, API credits, hardware, mentorship | Project Name, Resources Needed, Progress Proof Links, Justification |
-| **💬 Support & Inquiries** | General questions about events, workshops, tracks | Subject, Detailed Question |
-| **💡 Idea Jar & Suggestions** | Proposing projects for community or club suggestions | Idea Title, Target Track, Concept & Learning Objectives |
-| **🛡️ Report Issue / Misconduct** | Confidential reports for rule violations | Incident Summary, Confidential Details |
-| **📦 General / Misc** | Any other inquiries | Subject, Details |
-
-### Ticket Commands
-- `/setup-tickets [channel]` *(Admin only)*: Deploys the interactive ticket panel with the category dropdown.
-- `/ticket close [reason]`: Closes the ticket, archives the thread, and uploads the transcript.
-- `/ticket claim`: Claims the ticket for the interacting admin/lead.
-- `/ticket add <member>`: Adds a collaborator or team member to the private ticket thread.
-- `/ticket remove <member>`: Removes a user from the ticket thread.
-- `/ticket transcript`: Exports and downloads the complete chat transcript.
-- `/ticket info`: Displays Firestore database metadata for the active ticket.
-- `/ticket list [status] [category]` *(Admin only)*: Lists active tickets stored in Firestore.
+| **SPG Registration / Modification** | Register or update a Student Project Group (Product, Kaggle, Research) | Project Name & Track, Leader & Members, Estimated Duration, Goals & Next Steps |
+| **Resource Request** | Request compute/GPU, hardware, API credits, mentorship | Project Name, Resources Needed, Progress Proof Links, Justification |
+| **Support & Inquiries** | General questions regarding club tracks, events, activities | Subject, Details |
+| **Idea Jar & Suggestions** | Propose ideas for others to build or general club feedback | Idea Title, Track, Learning Objectives & Description |
+| **Report Issue / Misconduct** | Confidential reports for rule violations or disputes | Incident Summary, Confidential Details |
+| **General / Misc** | Miscellaneous requests | Subject, Details |
 
 ---
 
-## 🚀 Running Locally
+## Commands Reference
 
-1. Copy `.env.example` to `.env` and fill in your credentials:
-   ```bash
-   cp .env.example .env
-   ```
+### Authentication Commands
+- `/setup-auth [channel]`: Deploys the persistent verification panel with a click-to-verify button. (Admin)
+- `/auth` (or `/login`): Sends an ephemeral login link to the user.
+- `/whois <member>`: Displays linked Google account information from Firestore. (Admin)
+- `/whois-email <email>`: Looks up which Discord ID is linked to a given student email. (Admin)
+- `/unlink <member>`: Deletes the user's Firestore record and strips their verified role. (Admin)
 
-2. Run the server and bot with Uvicorn:
-   ```bash
-   python main.py
-   ```
-   or using `uvicorn` directly:
-   ```bash
-   uvicorn server:app --host 0.0.0.0 --port 8000
-   ```
+### Ticket Commands
+- `/setup-tickets [channel]`: Deploys the ticket creation panel with the category dropdown. (Admin)
+- `/ticket close [reason]`: Closes the ticket, archives the thread, and generates a transcript.
+- `/ticket claim`: Assigns the current ticket to the executing admin/lead.
+- `/ticket add <member>`: Adds another member to the private ticket thread.
+- `/ticket remove <member>`: Removes a member from the private ticket thread.
+- `/ticket transcript`: Exports and sends the full text transcript of the active ticket.
+- `/ticket info`: Displays database metadata for the active ticket.
+- `/ticket list [status] [category]`: Lists tickets matching filter criteria from Firestore. (Admin)
+
+---
+
+## Setup & Execution
+
+### 1. Environment Configuration
+Copy `.env.example` to `.env` and configure the values:
+
+```bash
+cp .env.example .env
+```
+
+Key variables:
+- `DISCORD_TOKEN`: Discord Bot Token.
+- `GUILD_ID`: Target Discord server ID.
+- `VERIFIED_ROLE_ID`: Role ID to assign upon successful authentication.
+- `FRONTEND_AUTH_URL`: Base URL for the frontend Google auth page.
+- `TICKETS_CHANNEL_ID`: Channel where private ticket threads are opened.
+- `ADMIN_ROLE_ID` / `SUPPORT_ROLE_ID`: Staff role IDs for alerts and ticket management.
+- `TRANSCRIPTS_CHANNEL_ID`: Channel ID to upload transcripts upon ticket closure.
+- `BOT_INTERNAL_SECRET`: Optional shared secret for the `/internal/verify-success` webhook.
+- `GOOGLE_APPLICATION_CREDENTIALS`: Path to Firebase service account JSON.
+
+### 2. Running the Application
+Start the Uvicorn server (which concurrently manages the FastAPI endpoints and Discord bot):
+
+```bash
+python main.py
+```
+
+Or run directly with Uvicorn:
+```bash
+uvicorn server:app --host 0.0.0.0 --port 8000
+```
