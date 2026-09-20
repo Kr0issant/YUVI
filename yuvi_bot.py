@@ -19,7 +19,7 @@ class YuviBot(commands.Bot):
         # Load all cogs from the /cogs directory
         initial_extensions = [
             "cogs.tickets",
-            # "cogs.auth",
+            "cogs.auth",
             "cogs.db"
         ]
         for ext in initial_extensions:

@@ -1,16 +1,18 @@
 import os
 from dotenv import load_dotenv
-import firebase_admin
-from firebase_admin import credentials
-from yuvi_bot import YuviBot
+import uvicorn
 
 load_dotenv()
 
-if not firebase_admin._apps:
-    cred = credentials.Certificate("serviceAccountKey.json")
-    firebase_admin.initialize_app(cred)
-
-bot = YuviBot()
-
 if __name__ == "__main__":
-    bot.run(os.getenv("DISCORD_TOKEN"))
+    host = os.getenv("HOST", "0.0.0.0")
+    port = int(os.getenv("PORT", "8000"))
+    
+    print(f"Starting YUVI Server on http://{host}:{port}")
+    uvicorn.run(
+        "server:app",
+        host=host,
+        port=port,
+        reload=False
+    )
+
