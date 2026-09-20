@@ -26,6 +26,8 @@ if not firebase_admin._apps:
 
 bot = YuviBot()
 
+
+
 class VerifySuccessRequest(BaseModel):
     discord_id: str
     email: str
@@ -61,6 +63,16 @@ app = FastAPI(
     description="Internal Webhook and API server for Reinforce Club SST Discord Bot",
     version="0.1.0",
     lifespan=lifespan
+)
+
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -176,3 +188,5 @@ async def verify_success(
         "role_granted": role_name,
         "role_assigned": role_assigned
     }
+
+
