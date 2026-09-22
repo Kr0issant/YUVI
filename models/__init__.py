@@ -7,6 +7,11 @@ from models.ticket import (
     TicketMessage,
     DiscordMeta,
 )
+from models.idea import (
+    Idea,
+    IdeaTrack,
+    IdeaDifficulty,
+)
 
 __all__ = [
     "Ticket",
@@ -16,4 +21,8 @@ __all__ = [
     "TicketUser",
     "TicketMessage",
     "DiscordMeta",
+    "Idea",
+    "IdeaTrack",
+    "IdeaDifficulty",
 ]
+
