@@ -11,18 +11,11 @@ from fastapi import FastAPI, HTTPException, Header
 from pydantic import BaseModel
 
 
-import firebase_admin
-from firebase_admin import credentials
+from utils.firestore_client import get_firestore_client
 from yuvi_bot import YuviBot
 
-# Initialize Firebase if not already initialized
-if not firebase_admin._apps:
-    cred_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "serviceAccountKey.json")
-    if os.path.exists(cred_path):
-        cred = credentials.Certificate(cred_path)
-        firebase_admin.initialize_app(cred)
-    else:
-        firebase_admin.initialize_app()
+# Initialize Firestore
+get_firestore_client()
 
 bot = YuviBot()
 

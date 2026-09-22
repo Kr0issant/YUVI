@@ -179,33 +179,61 @@ class AuthCog(commands.Cog, name="Authentication"):
 
         await interaction.followup.send(embed=embed, ephemeral=True)
 
-    @app_commands.command(name="unlink", description="Unlink a member's Google account and strip the verified role")
+    @app_commands.command(name="unlink", description="Unlink a member's Google account and strip their verified role")
     @app_commands.describe(member="Member to unlink")
     @app_commands.checks.has_permissions(administrator=True)
     async def unlink_command(self, interaction: discord.Interaction, member: discord.Member):
         await interaction.response.defer(ephemeral=True)
 
         success = await UserManager.unlink_user(str(member.id))
-        if not success:
-            await interaction.followup.send(f"⚠️ Could not delete database record for {member.mention}.", ephemeral=True)
+        
+        # Locate verified role via VERIFIED_ROLE_ID or by name
+        role_id_str = os.getenv("VERIFIED_ROLE_ID")
+        verified_role = None
 
-        # Remove verified role if present
-        role_id = os.getenv("VERIFIED_ROLE_ID")
+        if interaction.guild:
+            if role_id_str and role_id_str.strip().isdigit():
+                verified_role = interaction.guild.get_role(int(role_id_str.strip()))
+
+            if not verified_role:
+                for r in interaction.guild.roles:
+                    if r.name.lower() in ("verified member", "verified", "member"):
+                        verified_role = r
+                        break
+
         role_removed = False
-        if role_id and interaction.guild:
+        role_error = None
+
+        if verified_role and verified_role in member.roles:
             try:
-                role = interaction.guild.get_role(int(role_id))
-                if role and role in member.roles:
-                    await member.remove_roles(role, reason=f"Unlinked by {interaction.user}")
-                    role_removed = True
+                await member.remove_roles(verified_role, reason=f"Unlinked by {interaction.user}")
+                role_removed = True
+            except discord.Forbidden:
+                role_error = f"Bot lacks permission to remove {verified_role.mention} (make sure the Bot's role is positioned higher in Server Settings -> Roles)."
             except Exception as e:
-                print(f"[AuthCog] Error removing role: {e}")
+                role_error = f"Error removing role: {e}"
 
-        msg = f"✅ Successfully unlinked {member.mention} from database."
+        embed = discord.Embed(
+            title="🔗 Member Unlinked",
+            color=0x57F287 if success or role_removed else 0xED4245
+        )
+        embed.add_field(name="Member", value=f"{member.mention} (`{member.id}`)", inline=False)
+        
+        db_status = "✅ Removed from database" if success else "⚠️ No database record found or already unlinked"
+        embed.add_field(name="Database Status", value=db_status, inline=True)
+
         if role_removed:
-            msg += " Verified role removed."
+            role_status = f"✅ Removed {verified_role.mention}"
+        elif verified_role and verified_role not in member.roles:
+            role_status = f"ℹ️ Did not have {verified_role.mention}"
+        elif role_error:
+            role_status = f"⚠️ {role_error}"
+        else:
+            role_status = "ℹ️ Verified role not configured in .env"
 
-        await interaction.followup.send(msg, ephemeral=True)
+        embed.add_field(name="Role Status", value=role_status, inline=True)
+
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 async def setup(bot: commands.Bot):

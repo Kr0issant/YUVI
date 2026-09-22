@@ -10,8 +10,7 @@ Discord bot and FastAPI backend service for Reinforce Club SST. Handles Google a
 YUVI/
 ├── cogs/
 │   ├── auth.py               # Authentication slash commands & verification views
-│   ├── tickets.py            # Ticket panel, thread lifecycle & chat syncing
-│   └── db.py                 # Direct database utility commands
+│   └── tickets.py            # Ticket panel, thread lifecycle & chat syncing
 ├── models/
 │   ├── __init__.py
 │   └── ticket.py             # Ticket schemas, status enums & Firestore serialization
@@ -136,6 +135,14 @@ Tickets are stored in Firestore under `tickets/{ticket_id}` and conversations ar
 - `/ticket transcript`: Exports and sends the full text transcript of the active ticket.
 - `/ticket info`: Displays database metadata for the active ticket.
 - `/ticket list [status] [category]`: Lists tickets matching filter criteria from Firestore. (Admin)
+
+### Idea Jar Commands
+- `/setup-ideajar [channel]`: Deploys the persistent Idea Jar panel with "Get Random Idea" and "Submit an Idea" buttons. (Admin)
+- `/idea get <idea_id>`: Displays full details of an idea by its unique ID.
+- `/idea random [track] [difficulty]`: Pulls a random approved project idea from the Idea Jar.
+- `/idea list [track] [status]`: Lists ideas matching filter criteria.
+- `/idea approve <idea_id>`: Approves a submitted user idea. (Admin)
+- `/idea delete <idea_id>`: Deletes an idea from the database. (Admin)
 
 ---
 
