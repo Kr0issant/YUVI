@@ -18,7 +18,7 @@ from yuvi_bot import YuviBot
 get_firestore_client()
 
 bot = YuviBot()
-
+bot_startup_error: Optional[str] = None
 
 
 class VerifySuccessRequest(BaseModel):
@@ -30,25 +30,41 @@ class VerifySuccessRequest(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global bot_startup_error
+    bot_startup_error = None
+    
     # Startup: Start Discord bot as an asyncio background task
     token = os.getenv("DISCORD_TOKEN")
-    if not token:
-        print("[Server] WARNING: DISCORD_TOKEN is not set in environment.")
-    
-    bot_task = asyncio.create_task(bot.start(token))
-    print("[Server] Discord bot background task launched.")
+    if not token or not token.strip():
+        bot_startup_error = "DISCORD_TOKEN is missing or empty in environment variables"
+        print(f"[Server] ERROR: {bot_startup_error}")
+    else:
+        async def run_bot():
+            global bot_startup_error
+            try:
+                print("[Server] Starting Discord bot...")
+                await bot.start(token.strip())
+            except Exception as e:
+                bot_startup_error = f"{type(e).__name__}: {e}"
+                print(f"[Server] FATAL: Discord bot failed to start: {bot_startup_error}")
+                import traceback
+                traceback.print_exc()
+
+        bot_task = asyncio.create_task(run_bot())
+        print("[Server] Discord bot background task launched.")
     
     yield
 
     # Shutdown: Cleanly close Discord bot
     print("[Server] Shutting down Discord bot...")
     await bot.close()
-    try:
-        await asyncio.wait_for(bot_task, timeout=5.0)
-    except asyncio.TimeoutError:
-        print("[Server] Bot task shutdown timed out.")
-    except Exception as e:
-        print(f"[Server] Error during bot shutdown: {e}")
+    if 'bot_task' in locals() and not bot_task.done():
+        try:
+            await asyncio.wait_for(bot_task, timeout=5.0)
+        except asyncio.TimeoutError:
+            print("[Server] Bot task shutdown timed out.")
+        except Exception as e:
+            print(f"[Server] Error during bot shutdown: {e}")
 
 
 app = FastAPI(
@@ -75,7 +91,8 @@ async def health_check():
     return {
         "status": "healthy",
         "bot_ready": bot.is_ready(),
-        "bot_user": str(bot.user) if bot.user else None
+        "bot_user": str(bot.user) if bot.user else None,
+        "bot_error": bot_startup_error
     }
 
 
