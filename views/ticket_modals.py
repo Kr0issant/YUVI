@@ -168,43 +168,84 @@ async def create_ticket_thread_and_doc(
 class SPGModal(ui.Modal, title="🚀 SPG Registration / Modification"):
     project_name = ui.TextInput(
         label="Project Name & Track",
-        placeholder="e.g., Project Phoenix (Product / Kaggle / Research)",
+        placeholder="e.g., Project Phoenix (Research / Product / Kaggle / General)",
         max_length=100,
+        required=True
+    )
+    team_leader = ui.TextInput(
+        label="Team Leader Firebase UID",
+        placeholder="Mandatory Firebase UID of team leader (must be club member)",
+        max_length=128,
         required=True
     )
     team_members = ui.TextInput(
-        label="Leader & Team Members",
-        placeholder="Leader: @username (Club member), Members: @user1, @user2",
-        style=discord.TextStyle.paragraph,
-        max_length=500,
-        required=True
-    )
-    duration = ui.TextInput(
-        label="Estimated Duration & Report Frequency",
-        placeholder="e.g., 3 Months • Bi-weekly progress updates",
-        max_length=100,
-        required=True
-    )
-    objectives = ui.TextInput(
-        label="Project Summary & Next Steps",
-        placeholder="Describe the problem, milestones, goals, and current blockers...",
+        label="Team Member UIDs (Optional, max 6)",
+        placeholder="One Firebase UID per line (newline-separated, up to 6 members)",
         style=discord.TextStyle.paragraph,
         max_length=1000,
+        required=False
+    )
+    duration = ui.TextInput(
+        label="Estimated Duration (in days)",
+        placeholder="e.g. 60 (integer number of days)",
+        max_length=10,
+        required=True
+    )
+    frequency = ui.TextInput(
+        label="Report Frequency (in days)",
+        placeholder="e.g. 14 (integer number of days between reports)",
+        max_length=10,
         required=True
     )
 
     async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        leader_uid = self.team_leader.value.strip()
+        if "(" in leader_uid and leader_uid.endswith(")"):
+            leader_uid = leader_uid.split("(")[-1].rstrip(")")
+
+        member_uids = [
+            line.strip()
+            for line in self.team_members.value.splitlines()
+            if line.strip() and line.strip().lower() != "none"
+        ]
+        # Clean any appended names or parentheses if provided
+        cleaned_members = []
+        for m in member_uids:
+            if "(" in m and m.endswith(")"):
+                m = m.split("(")[-1].rstrip(")")
+            if m and m != leader_uid and m not in cleaned_members:
+                cleaned_members.append(m)
+
+        if len(cleaned_members) > 6:
+            await interaction.followup.send("❌ Maximum 6 team members allowed (excluding team leader).", ephemeral=True)
+            return
+
+        try:
+            duration_days = int(self.duration.value.strip())
+            frequency_days = int(self.frequency.value.strip())
+            if duration_days <= 0 or frequency_days <= 0:
+                raise ValueError()
+        except ValueError:
+            await interaction.followup.send("❌ Duration and report frequency must be positive integers (days).", ephemeral=True)
+            return
+
         fields = {
-            "project_name": self.project_name.value,
-            "team_members": self.team_members.value,
-            "duration": self.duration.value,
-            "goals": self.objectives.value
+            "project_name": self.project_name.value.strip(),
+            "leader_uid": leader_uid,
+            "member_uids": cleaned_members,
+            "duration_days": duration_days,
+            "frequency_days": frequency_days,
+            "Team Leader": leader_uid,
+            "Team Members": ", ".join(cleaned_members) if cleaned_members else "None",
+            "Duration (Days)": duration_days,
+            "Report Frequency (Days)": frequency_days,
         }
         await create_ticket_thread_and_doc(
             interaction=interaction,
             category=TicketCategory.SPG_REGISTRATION,
-            title=f"SPG: {self.project_name.value}",
-            description=self.objectives.value,
+            title=f"SPG: {self.project_name.value.strip()}",
+            description=f"Project Group: {self.project_name.value.strip()} | Leader: {leader_uid} | Duration: {duration_days} days | Frequency: every {frequency_days} days",
             fields=fields
         )
 

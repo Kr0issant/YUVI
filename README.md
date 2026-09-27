@@ -103,7 +103,7 @@ Tickets are stored in Firestore under `tickets/{ticket_id}` and conversations ar
 
 | Category | Purpose | Modal Fields |
 |---|---|---|
-| **SPG Registration / Modification** | Register or update a Student Project Group (Product, Kaggle, Research) | Project Name & Track, Leader & Members, Estimated Duration, Goals & Next Steps |
+| **SPG Registration / Modification** | Register or update a Student Project Group | Project Name & Track, Team Leader UID (mandatory club member), Team Member UIDs (optional, newline-separated, up to 6), Duration (in days), Report Frequency (in days) |
 | **Resource Request** | Request compute/GPU, hardware, API credits, mentorship | Project Name, Resources Needed, Progress Proof Links, Justification |
 | **Support & Inquiries** | General questions regarding club tracks, events, activities | Subject, Details |
 | **Idea Jar & Suggestions** | Propose ideas for others to build or general club feedback | Idea Title, Track, Learning Objectives & Description |
