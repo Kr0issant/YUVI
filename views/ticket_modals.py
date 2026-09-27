@@ -209,7 +209,7 @@ class SPGModal(ui.Modal, title="🚀 SPG Registration / Modification"):
         )
 
 
-class ResourceRequestModal(ui.Modal, title="⚡ Resource Request (SPGs Only)"):
+class ComputeResourceRequestModal(ui.Modal, title="⚡ Compute Resource Request (SPGs Only)"):
     project_name = ui.TextInput(
         label="Registered SPG Project Name",
         placeholder="e.g., Project Phoenix",
@@ -239,16 +239,67 @@ class ResourceRequestModal(ui.Modal, title="⚡ Resource Request (SPGs Only)"):
 
     async def on_submit(self, interaction: discord.Interaction):
         fields = {
+            "SPG Name": self.project_name.value,
+            "Resources Requested": self.resources_needed.value,
+            "Progress Proof": self.progress_proof.value,
+            "Justification": self.justification.value,
             "project_name": self.project_name.value,
             "resources_needed": self.resources_needed.value,
             "progress_proof_url": self.progress_proof.value,
-            "justification": self.justification.value
         }
         await create_ticket_thread_and_doc(
             interaction=interaction,
-            category=TicketCategory.RESOURCE_REQUEST,
-            title=f"Resource Request: {self.project_name.value}",
+            category=TicketCategory.COMPUTE_RESOURCE_REQUEST,
+            title=f"Compute Resource Request: {self.project_name.value}",
             description=self.justification.value,
+            fields=fields
+        )
+
+
+ResourceRequestModal = ComputeResourceRequestModal
+
+
+class LearningResourceRequestModal(ui.Modal, title="📚 Learning Resource Request"):
+    topic = ui.TextInput(
+        label="Topic / Subject Area",
+        placeholder="e.g., Transformer Architectures / Diffusion Models / Web Dev",
+        max_length=100,
+        required=True
+    )
+    resource_format = ui.TextInput(
+        label="Resource Format",
+        placeholder="e.g., Curated Roadmap / Video Course / Research Papers / Book Guide",
+        max_length=100,
+        required=True
+    )
+    target_audience = ui.TextInput(
+        label="Target Audience / Track",
+        placeholder="e.g., Research Track (Beginners) / Kaggle Competitors",
+        max_length=100,
+        required=True
+    )
+    description = ui.TextInput(
+        label="Description & Suggested Links",
+        placeholder="What should be included, suggested URLs or curriculum details...",
+        style=discord.TextStyle.paragraph,
+        max_length=1000,
+        required=True
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        fields = {
+            "Topic / Subject Area": self.topic.value,
+            "Resource Format": self.resource_format.value,
+            "Target Audience / Track": self.target_audience.value,
+            "Description & Suggested Links": self.description.value,
+            "topic": self.topic.value,
+            "resource_format": self.resource_format.value,
+        }
+        await create_ticket_thread_and_doc(
+            interaction=interaction,
+            category=TicketCategory.LEARNING_RESOURCE_REQUEST,
+            title=f"Learning Resource: {self.topic.value}",
+            description=self.description.value,
             fields=fields
         )
 

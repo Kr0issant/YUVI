@@ -2,12 +2,14 @@ import discord
 from discord import ui
 from models.ticket import TicketCategory
 from views.ticket_modals import (
-    SPGModal,
-    ResourceRequestModal,
-    SupportInquiryModal,
+    ComputeResourceRequestModal,
+    FeedbackModal,
     IdeaJarModal,
+    LearningResourceRequestModal,
+    MiscModal,
     ReportModal,
-    MiscModal
+    SPGModal,
+    SupportInquiryModal,
 )
 
 class TicketCategorySelect(ui.Select):
@@ -20,10 +22,16 @@ class TicketCategorySelect(ui.Select):
                 emoji="🚀"
             ),
             discord.SelectOption(
-                label="Resource Request",
-                value=TicketCategory.RESOURCE_REQUEST.value,
+                label="Compute Resource Request",
+                value=TicketCategory.COMPUTE_RESOURCE_REQUEST.value,
                 description="Request GPU/Compute, hardware, API credits, mentorship (SPGs)",
                 emoji="⚡"
+            ),
+            discord.SelectOption(
+                label="Learning Resource Request",
+                value=TicketCategory.LEARNING_RESOURCE_REQUEST.value,
+                description="Suggest or request learning roadmaps, articles, books, or video guides",
+                emoji="📚"
             ),
             discord.SelectOption(
                 label="Support & Inquiries",
@@ -69,14 +77,15 @@ class TicketCategorySelect(ui.Select):
 
         if selected_value == TicketCategory.SPG_REGISTRATION.value:
             await interaction.response.send_modal(SPGModal())
-        elif selected_value == TicketCategory.RESOURCE_REQUEST.value:
-            await interaction.response.send_modal(ResourceRequestModal())
+        elif selected_value in (TicketCategory.COMPUTE_RESOURCE_REQUEST.value, TicketCategory.RESOURCE_REQUEST.value):
+            await interaction.response.send_modal(ComputeResourceRequestModal())
+        elif selected_value == TicketCategory.LEARNING_RESOURCE_REQUEST.value:
+            await interaction.response.send_modal(LearningResourceRequestModal())
         elif selected_value == TicketCategory.SUPPORT.value:
             await interaction.response.send_modal(SupportInquiryModal())
         elif selected_value == TicketCategory.IDEA_JAR.value:
             await interaction.response.send_modal(IdeaJarModal())
         elif selected_value == TicketCategory.FEEDBACK.value:
-            from views.ticket_modals import FeedbackModal
             await interaction.response.send_modal(FeedbackModal())
         elif selected_value == TicketCategory.REPORT.value:
             await interaction.response.send_modal(ReportModal())
