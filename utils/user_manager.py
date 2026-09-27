@@ -14,20 +14,10 @@ class UserManager:
 
     @classmethod
     async def get_user(cls, discord_id: str) -> Optional[Dict[str, Any]]:
-        """Fetch user record via FastAPI Backend (/api/v1/users?discord_id=...) with fallback."""
+        """Fetch full user record by Discord ID (Firestore canonical query with API fallback)."""
         clean_id = str(discord_id).strip()
 
-        # 1. Query via Backend API
-        res = await APIClient.get("users", params={"discord_id": clean_id})
-        if res and res.get("items"):
-            return res["items"][0]
-
-        # 2. Fallback direct API lookup by ID
-        res_direct = await APIClient.get(f"users/{clean_id}")
-        if res_direct and res_direct.get("id"):
-            return res_direct
-
-        # 3. Direct Firestore Fallback
+        # 1. Direct Firestore Query (returns full document with email)
         def _sync_get():
             try:
                 db = cls._get_db()
@@ -54,22 +44,30 @@ class UserManager:
 
                 return None
             except Exception as e:
-                print(f"[UserManager] Firestore fallback error fetching user {discord_id}: {e}")
+                print(f"[UserManager] Firestore query error fetching user {discord_id}: {e}")
                 return None
 
-        return await asyncio.to_thread(_sync_get)
+        user_doc = await asyncio.to_thread(_sync_get)
+        if user_doc:
+            return user_doc
+
+        # 2. Fallback via Backend API
+        res = await APIClient.get("users", params={"discord_id": clean_id})
+        if res and res.get("items"):
+            return res["items"][0]
+
+        res_direct = await APIClient.get(f"users/{clean_id}")
+        if res_direct and res_direct.get("id"):
+            return res_direct
+
+        return None
 
     @classmethod
     async def get_user_by_email(cls, email: str) -> Optional[Dict[str, Any]]:
-        """Query user record from API by email with Firestore fallback."""
+        """Query user record by email (Firestore canonical query with API fallback)."""
         clean_email = str(email).lower().strip()
 
-        # 1. Query via Backend API
-        res = await APIClient.get(f"users/{clean_email}")
-        if res and res.get("id"):
-            return res
-
-        # 2. Direct Firestore Fallback
+        # 1. Direct Firestore Query
         def _sync_query():
             try:
                 db = cls._get_db()
@@ -88,10 +86,19 @@ class UserManager:
 
                 return None
             except Exception as e:
-                print(f"[UserManager] Firestore fallback error querying email {email}: {e}")
+                print(f"[UserManager] Firestore query error querying email {email}: {e}")
                 return None
 
-        return await asyncio.to_thread(_sync_query)
+        user_doc = await asyncio.to_thread(_sync_query)
+        if user_doc:
+            return user_doc
+
+        # 2. Fallback via Backend API
+        res = await APIClient.get(f"users/{clean_email}")
+        if res and res.get("id"):
+            return res
+
+        return None
 
     @classmethod
     async def unlink_user(cls, discord_id: str) -> bool:

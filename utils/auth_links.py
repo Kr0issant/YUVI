@@ -21,9 +21,20 @@ def issue_link(db, discord_id, frontend_url, now=None):
 
 def require_verified_link(db, discord_id, email):
     email = email.lower().strip()
-    alias = db.collection('users').document(discord_id).get().to_dict() or {}
-    primary = db.collection('users').document(email).get().to_dict() or {}
-    for record in (alias, primary):
-        if (record.get('email') != email or str(record.get('discord_id')) != discord_id
-                or record.get('discord_link_version') != 1):
-            raise HTTPException(403, 'A verified Discord link is required.')
+    discord_id = str(discord_id).strip()
+    query = db.collection('users').where('discord_id', '==', discord_id).where('email', '==', email).limit(1)
+    docs = list(query.stream())
+    if not docs and discord_id.isdigit():
+        query_int = db.collection('users').where('discord_id', '==', int(discord_id)).where('email', '==', email).limit(1)
+        docs = list(query_int.stream())
+    if not docs:
+        query_email = db.collection('users').where('email', '==', email).limit(1)
+        docs_email = list(query_email.stream())
+        if docs_email:
+            rec = docs_email[0].to_dict() or {}
+            if str(rec.get('discord_id') or '').strip() == discord_id and rec.get('discord_link_version') == 1:
+                return
+        raise HTTPException(403, 'A verified Discord link is required.')
+    record = docs[0].to_dict() or {}
+    if record.get('discord_link_version') != 1:
+        raise HTTPException(403, 'A verified Discord link is required.')
