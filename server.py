@@ -269,7 +269,7 @@ async def relay_ticket_message(
         color=0x5865F2
     )
     embed.set_author(name=f"{sender} (via Dashboard)", icon_url="https://cdn.discordapp.com/embed/avatars/0.png")
-    
+
     if payload.attachments:
         for idx, att_url in enumerate(payload.attachments, 1):
             embed.add_field(name=f"Attachment {idx}", value=f"[Download / View File]({att_url})", inline=False)
@@ -357,6 +357,3 @@ async def create_ticket_thread(
             "thread_url": f"https://discord.com/channels/{guild.id}/{thread.id}"
         }
     }
-
-
-
