@@ -73,17 +73,17 @@ class UserManager:
         def _sync_query():
             try:
                 db = cls._get_db()
-                doc = db.collection(USERS_COLLECTION).document(clean_email).get()
-                if doc.exists:
-                    data = doc.to_dict()
-                    data["doc_id"] = doc.id
-                    return data
-
                 query = db.collection(USERS_COLLECTION).where("email", "==", clean_email).limit(1)
                 docs = list(query.stream())
                 if docs:
                     data = docs[0].to_dict()
                     data["doc_id"] = docs[0].id
+                    return data
+
+                doc = db.collection(USERS_COLLECTION).document(clean_email).get()
+                if doc.exists:
+                    data = doc.to_dict()
+                    data["doc_id"] = doc.id
                     return data
 
                 return None

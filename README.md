@@ -44,7 +44,7 @@ YUVI/
    {FRONTEND_AUTH_URL}?discord_id={discord_user_id}
    ```
 4. The user completes Google OAuth with their `@sst.scaler.com` account on the frontend.
-5. The main backend validates the token, domain, and duplicate accounts, saves the profile to Firestore under `users/{discord_id}`, and issues a POST request to YUVI's internal webhook.
+5. The main backend validates the token, domain, and duplicate accounts, updates the member profile in Firestore under `users/{uid}` (with `discord_id`), and issues a POST request to YUVI's internal webhook.
 6. YUVI assigns the verified role to the user and sends a confirmation DM.
 
 ```mermaid
@@ -58,7 +58,7 @@ sequenceDiagram
     participant Server as YUVI FastAPI Webhook
 
     User->>Bot: /auth or panel button
-    Bot->>DB: Query users/{discord_id}
+    Bot->>DB: Query user by discord_id
     alt User already verified
         Bot-->>User: Ephemeral notice ("Already linked to email")
     else User unverified
