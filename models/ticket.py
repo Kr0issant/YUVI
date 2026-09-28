@@ -23,8 +23,8 @@ class TicketCategory(str, Enum):
             TicketCategory.COMPUTE_RESOURCE_REQUEST: "⚡ Compute Resource Request",
             TicketCategory.LEARNING_RESOURCE_REQUEST: "📚 Learning Resource Request",
             TicketCategory.SUPPORT: "💬 Support & General Inquiries",
-            TicketCategory.IDEA_JAR: "💡 Idea Jar & Suggestions",
-            TicketCategory.FEEDBACK: "📝 General Feedback & Suggestions",
+            TicketCategory.IDEA_JAR: "💡 Idea Jar Proposal",
+            TicketCategory.FEEDBACK: "📝 Suggestions & Feedback",
             TicketCategory.REPORT: "🛡️ Report Issue / Misconduct",
             TicketCategory.MISC: "📦 General / Misc"
         }
@@ -68,8 +68,8 @@ class TicketCategory(str, Enum):
             TicketCategory.COMPUTE_RESOURCE_REQUEST: "Request GPU/Compute, hardware, API credits, or mentorship (SPG only)",
             TicketCategory.LEARNING_RESOURCE_REQUEST: "Suggest or request learning roadmaps, articles, books, or video guides",
             TicketCategory.SUPPORT: "Get help with club activities, roles, events, or tracks",
-            TicketCategory.IDEA_JAR: "Submit project ideas or suggest improvements for the club",
-            TicketCategory.FEEDBACK: "Share feedback or suggestions to improve the club",
+            TicketCategory.IDEA_JAR: "Propose structured project ideas with roadmap, difficulty & learning outcomes",
+            TicketCategory.FEEDBACK: "Share suggestions, recommendations, or feedback for the club",
             TicketCategory.REPORT: "Confidential reports regarding rule violations or misconduct",
             TicketCategory.MISC: "Other questions or inquiries"
         }
