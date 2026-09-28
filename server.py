@@ -25,6 +25,14 @@ bot_startup_error: Optional[str] = None
 # Keep retries for the same member ordered without retaining idle locks forever.
 verification_locks = WeakValueDictionary()
 
+# ==============================================================================
+# 🎯 ORIENTATION TOGGLE: Kickoff Role
+# Set ENABLE_KICKOFF_ROLE = False after orientation is over to only grant Verified!
+# (You can also toggle this via ASSIGN_KICKOFF_ROLE=false in your .env)
+# ==============================================================================
+ENABLE_KICKOFF_ROLE = True
+# ==============================================================================
+
 
 class VerifySuccessRequest(BaseModel):
     discord_id: str
@@ -159,34 +167,61 @@ async def _assign_verified_role(guild, payload):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch member {payload.discord_id}: {e}")
 
-    # 5. Locate & Assign Verified Member Role
+    # 5. Locate & Assign Verified Member Role & Kickoff Role
     verified_role_id = os.getenv("VERIFIED_ROLE_ID")
     verified_role = None
 
-    if verified_role_id and verified_role_id.isdigit():
-        verified_role = guild.get_role(int(verified_role_id))
+    if verified_role_id and verified_role_id.strip().isdigit():
+        verified_role = guild.get_role(int(verified_role_id.strip()))
 
     if not verified_role:
         # Fallback to search role by name
         for r in guild.roles:
-            if r.name.lower() in ("verified member", "verified", "member"):
+            if getattr(r, "name", "").lower() in ("verified member", "verified", "member"):
                 verified_role = r
                 break
+
+    # --- TEMPORARY: Kickoff Role for Orientation ---
+    # To disable: set ENABLE_KICKOFF_ROLE = False at top of this file, or ASSIGN_KICKOFF_ROLE=false in .env
+    kickoff_role = None
+    kickoff_enabled = ENABLE_KICKOFF_ROLE and os.getenv("ASSIGN_KICKOFF_ROLE", "true").lower() in ("true", "1", "yes")
+
+    if kickoff_enabled:
+        kickoff_role_id = os.getenv("KICKOFF_ROLE_ID")
+        if kickoff_role_id and kickoff_role_id.strip():
+            if kickoff_role_id.strip().isdigit():
+                kickoff_role = guild.get_role(int(kickoff_role_id.strip()))
+            if not kickoff_role:
+                for r in guild.roles:
+                    if "kickoff" in getattr(r, "name", "").lower():
+                        kickoff_role = r
+                        break
+    # -----------------------------------------------
+
+    target_roles = []
+    for r in (verified_role, kickoff_role):
+        if r is not None and r not in target_roles:
+            target_roles.append(r)
+
+    roles_to_assign = [r for r in target_roles if r not in member.roles]
 
     role_assigned = False
     role_name = "None (Role not configured in .env)"
 
-    already_assigned = verified_role is not None and verified_role in member.roles
-    if verified_role:
+    # already_assigned is True if target roles exist and member already has all of them
+    already_assigned = len(target_roles) > 0 and len(roles_to_assign) == 0
+
+    if target_roles:
         try:
-            if not already_assigned:
-                await member.add_roles(verified_role, reason=f"Google account verified: {payload.email}")
+            if roles_to_assign:
+                await member.add_roles(*roles_to_assign, reason=f"Google account verified: {payload.email}")
             role_assigned = True
-            role_name = verified_role.name
-            print(f"[Server] Assigned role '{role_name}' to {member.name} ({member.id})")
+            role_name = " & ".join(r.name for r in target_roles)
+            print(f"[Server] Assigned role(s) '{role_name}' to {member.name} ({member.id})")
         except discord.Forbidden:
-            print(f"[Server] ERROR: Missing permissions to assign role '{verified_role.name}' to {member.id}")
-            raise HTTPException(status_code=500, detail="Bot lacks permission to assign the verified role (ensure bot role is above verified role in server hierarchy).")
+            role_names_str = ", ".join(r.name for r in roles_to_assign or target_roles)
+            print(f"[Server] ERROR: Missing permissions to assign role(s) '{role_names_str}' to {member.id}")
+            raise HTTPException(status_code=500, detail="Bot lacks permission to assign roles (ensure bot role is above verified/kickoff roles in server hierarchy).")
         except Exception as e:
             print(f"[Server] ERROR assigning role: {e}")
             raise HTTPException(status_code=500, detail=f"Failed to assign role: {e}")
@@ -198,12 +233,14 @@ async def _assign_verified_role(guild, payload):
 
     # 6. Send Direct Message Confirmation
     try:
+        roles_formatted = " and ".join(f"**{r.name}**" for r in target_roles)
+        role_plural = "s" if len(target_roles) > 1 else ""
         embed = discord.Embed(
             title="🎉 Welcome to Reinforce Club SST!",
             description=(
                 f"Hello {member.mention}!\n\n"
                 f"Your Google account (**`{payload.email}`**) has been successfully verified.\n"
-                f"You have been granted the **{role_name}** role on Discord.\n\n"
+                f"You have been granted the {roles_formatted} role{role_plural} on Discord.\n\n"
                 f"You now have access to member discussion channels, showcase forums, and Student Project Groups (SPGs)!"
             ),
             color=0x57F287
