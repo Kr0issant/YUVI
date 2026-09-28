@@ -167,9 +167,15 @@ async def create_ticket_thread_and_doc(
 
 class SPGModal(ui.Modal, title="🚀 SPG Registration / Modification"):
     project_name = ui.TextInput(
-        label="Project Name & Track",
-        placeholder="e.g., Project Phoenix (Research / Product / Kaggle / General)",
+        label="Project Name",
+        placeholder="e.g., Project Phoenix",
         max_length=100,
+        required=True
+    )
+    track = ui.TextInput(
+        label="Track",
+        placeholder="Research / Product / Kaggle / General",
+        max_length=50,
         required=True
     )
     team_leader = ui.TextInput(
@@ -185,21 +191,17 @@ class SPGModal(ui.Modal, title="🚀 SPG Registration / Modification"):
         max_length=1000,
         required=False
     )
-    duration = ui.TextInput(
-        label="Estimated Duration (in days)",
-        placeholder="e.g. 60 (integer number of days)",
-        max_length=10,
-        required=True
-    )
-    frequency = ui.TextInput(
-        label="Report Frequency (in days)",
-        placeholder="e.g. 14 (integer number of days between reports)",
-        max_length=10,
+    duration_and_frequency = ui.TextInput(
+        label="Duration & Frequency in days (e.g. 60, 14)",
+        placeholder="e.g., 60, 14 (total days, days between reports)",
+        max_length=50,
         required=True
     )
 
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
+        import re
+
         leader_uid = self.team_leader.value.strip()
         if "(" in leader_uid and leader_uid.endswith(")"):
             leader_uid = leader_uid.split("(")[-1].rstrip(")")
@@ -221,21 +223,28 @@ class SPGModal(ui.Modal, title="🚀 SPG Registration / Modification"):
             await interaction.followup.send("❌ Maximum 6 team members allowed (excluding team leader).", ephemeral=True)
             return
 
+        parts = [p.strip() for p in re.split(r'[,/;\s]+', self.duration_and_frequency.value.strip()) if p.strip()]
         try:
-            duration_days = int(self.duration.value.strip())
-            frequency_days = int(self.frequency.value.strip())
+            if not parts:
+                raise ValueError()
+            duration_days = int(parts[0])
+            frequency_days = int(parts[1]) if len(parts) > 1 else 14
             if duration_days <= 0 or frequency_days <= 0:
                 raise ValueError()
-        except ValueError:
-            await interaction.followup.send("❌ Duration and report frequency must be positive integers (days).", ephemeral=True)
+        except (ValueError, IndexError):
+            await interaction.followup.send("❌ Please enter duration and frequency as positive numbers in days (e.g. 60, 14).", ephemeral=True)
             return
 
+        track_clean = self.track.value.strip()
         fields = {
             "project_name": self.project_name.value.strip(),
+            "track": track_clean,
             "leader_uid": leader_uid,
             "member_uids": cleaned_members,
             "duration_days": duration_days,
             "frequency_days": frequency_days,
+            "Project Name": self.project_name.value.strip(),
+            "Track": track_clean,
             "Team Leader": leader_uid,
             "Team Members": ", ".join(cleaned_members) if cleaned_members else "None",
             "Duration (Days)": duration_days,
@@ -244,8 +253,8 @@ class SPGModal(ui.Modal, title="🚀 SPG Registration / Modification"):
         await create_ticket_thread_and_doc(
             interaction=interaction,
             category=TicketCategory.SPG_REGISTRATION,
-            title=f"SPG: {self.project_name.value.strip()}",
-            description=f"Project Group: {self.project_name.value.strip()} | Leader: {leader_uid} | Duration: {duration_days} days | Frequency: every {frequency_days} days",
+            title=f"SPG: {self.project_name.value.strip()} ({track_clean})",
+            description=f"Project Group: {self.project_name.value.strip()} | Track: {track_clean} | Leader: {leader_uid} | Duration: {duration_days} days | Frequency: every {frequency_days} days",
             fields=fields
         )
 
@@ -374,52 +383,106 @@ class SupportInquiryModal(ui.Modal, title="💬 Support & General Inquiries"):
         )
 
 
-class IdeaJarModal(ui.Modal, title="💡 Idea Jar & Suggestions"):
+class IdeaJarModal(ui.Modal, title="💡 Idea Jar Proposal"):
     idea_title = ui.TextInput(
-        label="Idea / Suggestion Title",
-        placeholder="e.g., Automated Kaggle Notebook Benchmark Bot",
-        max_length=100,
-        required=True
-    )
-    track = ui.TextInput(
-        label="Target Track / Category",
-        placeholder="e.g., Product / Kaggle / Research / Club Events",
-        max_length=100,
+        label="Idea Title & Track / Difficulty",
+        placeholder="e.g., Autonomous Agents Platform (Research / Intermediate)",
+        max_length=150,
         required=True
     )
     overview = ui.TextInput(
-        label="Idea Description & Learning Objectives",
-        placeholder="What is the concept, skill requirements, and learning objectives for someone building this?",
+        label="Overview & Problem Statement",
+        placeholder="What problem does this solve, and what is the technical approach?",
         style=discord.TextStyle.paragraph,
         max_length=1000,
         required=True
     )
+    prerequisites = ui.TextInput(
+        label="Prerequisites (1 per line)",
+        placeholder="e.g.,\nPython\nPyTorch basics\nTransformers library",
+        style=discord.TextStyle.paragraph,
+        max_length=1000,
+        required=False
+    )
+    roadmap = ui.TextInput(
+        label="Rough Roadmap (1 step per line)",
+        placeholder="e.g.,\nPhase 1: Literature review\nPhase 2: Baseline architecture\nPhase 3: Benchmarks",
+        style=discord.TextStyle.paragraph,
+        max_length=1000,
+        required=False
+    )
+    learning_outcomes = ui.TextInput(
+        label="Learning Outcomes (1 per line)",
+        placeholder="e.g.,\nHands-on distributed training\nBenchmarking pipelines\nPaper preprint",
+        style=discord.TextStyle.paragraph,
+        max_length=1000,
+        required=False
+    )
 
     async def on_submit(self, interaction: discord.Interaction):
+        import re
+        raw_title = self.idea_title.value.strip()
+        track = "General"
+        difficulty = "Intermediate"
+        clean_title = raw_title
+
+        match = re.search(r'[\(|\[](.*?)[\)|\]]$', raw_title)
+        if match:
+            meta_str = match.group(1)
+            clean_title = raw_title[:match.start()].strip()
+            parts = [p.strip() for p in re.split(r'[/,;|]+', meta_str) if p.strip()]
+            if len(parts) >= 1:
+                track = parts[0]
+            if len(parts) >= 2:
+                difficulty = parts[1]
+        elif "|" in raw_title:
+            parts = [p.strip() for p in raw_title.split("|")]
+            clean_title = parts[0].strip()
+            if len(parts) >= 2:
+                track = parts[1].strip()
+            if len(parts) >= 3:
+                difficulty = parts[2].strip()
+
+        prereqs_list = [line.strip().lstrip("-*•0123456789. ") for line in self.prerequisites.value.splitlines() if line.strip()]
+        roadmap_list = [line.strip().lstrip("-*•0123456789. ") for line in self.roadmap.value.splitlines() if line.strip()]
+        outcomes_list = [line.strip().lstrip("-*•0123456789. ") for line in self.learning_outcomes.value.splitlines() if line.strip()]
+
         fields = {
-            "idea_title": self.idea_title.value,
-            "track": self.track.value,
-            "overview": self.overview.value
+            "Idea Title": clean_title,
+            "Track": track,
+            "Difficulty": difficulty,
+            "Overview": self.overview.value.strip(),
+            "Prerequisites": "\n".join(f"• {p}" for p in prereqs_list) if prereqs_list else "None specified",
+            "Rough Roadmap": "\n".join(f"{i+1}. {r}" for i, r in enumerate(roadmap_list)) if roadmap_list else "None specified",
+            "Learning Outcomes": "\n".join(f"• {o}" for o in outcomes_list) if outcomes_list else "None specified",
+            "idea_title": clean_title,
+            "track": track.lower(),
+            "difficulty": difficulty.lower() if difficulty else None,
+            "overview": self.overview.value.strip(),
+            "description": self.overview.value.strip(),
+            "prerequisites": prereqs_list,
+            "rough_roadmap": roadmap_list,
+            "learning_outcomes": outcomes_list,
         }
         await create_ticket_thread_and_doc(
             interaction=interaction,
             category=TicketCategory.IDEA_JAR,
-            title=f"Idea Jar: {self.idea_title.value}",
-            description=self.overview.value,
+            title=f"Idea Jar: {clean_title}",
+            description=f"**Track:** {track} | **Difficulty:** {difficulty}\n\n{self.overview.value.strip()}",
             fields=fields
         )
 
 
-class FeedbackModal(ui.Modal, title="📝 Feedback & Suggestions"):
+class FeedbackModal(ui.Modal, title="📝 Suggestions & Feedback"):
     topic = ui.TextInput(
-        label="Feedback Topic",
-        placeholder="e.g., Workshop pacing, Discord channels, Website UX",
+        label="Suggestion / Feedback Topic",
+        placeholder="e.g., Workshop pacing, Discord structure, Website UX, New events",
         max_length=100,
         required=True
     )
     comments = ui.TextInput(
-        label="Feedback & Details",
-        placeholder="Share what worked well and what we can improve...",
+        label="Suggestions & Details",
+        placeholder="Share your suggestions, recommendations, or feedback in detail...",
         style=discord.TextStyle.paragraph,
         max_length=1000,
         required=True
@@ -427,14 +490,16 @@ class FeedbackModal(ui.Modal, title="📝 Feedback & Suggestions"):
 
     async def on_submit(self, interaction: discord.Interaction):
         fields = {
-            "topic": self.topic.value,
-            "comments": self.comments.value
+            "Suggestion Topic": self.topic.value.strip(),
+            "Details": self.comments.value.strip(),
+            "topic": self.topic.value.strip(),
+            "comments": self.comments.value.strip()
         }
         await create_ticket_thread_and_doc(
             interaction=interaction,
             category=TicketCategory.FEEDBACK,
-            title=f"Feedback: {self.topic.value}",
-            description=self.comments.value,
+            title=f"Suggestion: {self.topic.value.strip()}",
+            description=self.comments.value.strip(),
             fields=fields
         )
 

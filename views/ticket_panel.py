@@ -40,15 +40,15 @@ class TicketCategorySelect(ui.Select):
                 emoji="💬"
             ),
             discord.SelectOption(
-                label="Idea Jar & Suggestions",
+                label="Idea Jar Proposal",
                 value=TicketCategory.IDEA_JAR.value,
-                description="Submit project ideas or suggest improvements for the club",
+                description="Propose structured project ideas with roadmap, difficulty & learning outcomes",
                 emoji="💡"
             ),
             discord.SelectOption(
-                label="Feedback & Suggestions",
+                label="Suggestions & Feedback",
                 value=TicketCategory.FEEDBACK.value,
-                description="Share feedback or suggestions to improve the club",
+                description="Share general suggestions, club improvement ideas, or feedback",
                 emoji="📝"
             ),
             discord.SelectOption(
