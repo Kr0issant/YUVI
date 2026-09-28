@@ -170,6 +170,8 @@ Key variables:
 - `GUILD_ID`: Target Discord server ID.
 - `VERIFIED_ROLE_ID`: Role ID to assign upon successful authentication.
 - `KICKOFF_ROLE_ID`: Optional kickoff/orientation role ID assigned alongside verified role.
+- `ASSIGN_KICKOFF_ROLE`: Set `false` to disable granting the kickoff role during orientation.
+- `SYNC_NICKNAME_ON_VERIFY`: Set `true` to automatically change user nickname to their DB full name on verification (default `true`).
 - `FRONTEND_AUTH_URL`: Base URL for the frontend Google auth page.
 - `TICKETS_CHANNEL_ID`: Channel where private ticket threads are opened.
 - `ADMIN_ROLE_ID` / `SUPPORT_ROLE_ID`: Staff role IDs for alerts and ticket management.

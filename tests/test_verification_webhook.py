@@ -115,4 +115,78 @@ class VerificationWebhookTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['role_granted'], 'Verified Member')
         member.add_roles.assert_awaited_once_with(v_role, reason='Google account verified: member@sst.scaler.com')
 
+    async def test_syncs_nickname_to_full_name_from_db(self):
+        role = MagicMock(); role.name = 'Verified Member'
+        member = MagicMock(); member.roles = []; member.nick = None; member.name = 'julian_discord'
+        member.send = AsyncMock(); member.add_roles = AsyncMock(); member.edit = AsyncMock()
+        guild = MagicMock(); guild.id = 123456
+        guild.fetch_member = AsyncMock(return_value=member)
+        guild.get_role.return_value = role
+        bot = MagicMock(); bot.is_ready.return_value = True; bot.get_guild.return_value = guild
+        payload = self.server.VerifySuccessRequest(discord_id='123456', email='member@sst.scaler.com')
+        with patch.dict(os.environ, {
+            'BOT_INTERNAL_SECRET': 'expected',
+            'GUILD_ID': '123456',
+            'VERIFIED_ROLE_ID': '101',
+            'ASSIGN_KICKOFF_ROLE': 'false',
+            'SYNC_NICKNAME_ON_VERIFY': 'true'
+        }), patch.object(self.server, 'bot', bot), patch.object(self.server, 'get_firestore_client'), \
+           patch.object(self.server, 'require_verified_link'), \
+           patch.object(self.server, '_fetch_user_full_name', return_value='Julian Chen'):
+            result = await self.server.verify_success(payload, 'expected')
+        await self.server.discord_queue.drain()
+        self.assertTrue(result['role_assigned'])
+        self.assertEqual(result['nickname_synced'], 'Julian Chen')
+        member.edit.assert_awaited_once_with(nick='Julian Chen', reason='Google account verified: member@sst.scaler.com')
+
+    async def test_nickname_sync_truncated_to_32_chars(self):
+        long_name = "Alexander Bartholomew Montgomery III The Great"
+        role = MagicMock(); role.name = 'Verified Member'
+        member = MagicMock(); member.roles = []; member.nick = None; member.name = 'alex'
+        member.send = AsyncMock(); member.add_roles = AsyncMock(); member.edit = AsyncMock()
+        guild = MagicMock(); guild.id = 123456
+        guild.fetch_member = AsyncMock(return_value=member)
+        guild.get_role.return_value = role
+        bot = MagicMock(); bot.is_ready.return_value = True; bot.get_guild.return_value = guild
+        payload = self.server.VerifySuccessRequest(discord_id='123456', email='member@sst.scaler.com')
+        with patch.dict(os.environ, {
+            'BOT_INTERNAL_SECRET': 'expected',
+            'GUILD_ID': '123456',
+            'VERIFIED_ROLE_ID': '101',
+            'ASSIGN_KICKOFF_ROLE': 'false',
+            'SYNC_NICKNAME_ON_VERIFY': 'true'
+        }), patch.object(self.server, 'bot', bot), patch.object(self.server, 'get_firestore_client'), \
+           patch.object(self.server, 'require_verified_link'), \
+           patch.object(self.server, '_fetch_user_full_name', return_value=long_name):
+            result = await self.server.verify_success(payload, 'expected')
+        await self.server.discord_queue.drain()
+        self.assertEqual(result['nickname_synced'], long_name[:32])
+        self.assertEqual(len(result['nickname_synced']), 32)
+        member.edit.assert_awaited_once_with(nick=long_name[:32], reason='Google account verified: member@sst.scaler.com')
+
+    async def test_disabled_nickname_sync_via_env(self):
+        role = MagicMock(); role.name = 'Verified Member'
+        member = MagicMock(); member.roles = []; member.nick = None; member.name = 'julian_discord'
+        member.send = AsyncMock(); member.add_roles = AsyncMock(); member.edit = AsyncMock()
+        guild = MagicMock(); guild.id = 123456
+        guild.fetch_member = AsyncMock(return_value=member)
+        guild.get_role.return_value = role
+        bot = MagicMock(); bot.is_ready.return_value = True; bot.get_guild.return_value = guild
+        payload = self.server.VerifySuccessRequest(discord_id='123456', email='member@sst.scaler.com')
+        with patch.dict(os.environ, {
+            'BOT_INTERNAL_SECRET': 'expected',
+            'GUILD_ID': '123456',
+            'VERIFIED_ROLE_ID': '101',
+            'ASSIGN_KICKOFF_ROLE': 'false',
+            'SYNC_NICKNAME_ON_VERIFY': 'false'
+        }), patch.object(self.server, 'bot', bot), patch.object(self.server, 'get_firestore_client'), \
+           patch.object(self.server, 'require_verified_link'), \
+           patch.object(self.server, '_fetch_user_full_name', return_value='Julian Chen'):
+            result = await self.server.verify_success(payload, 'expected')
+        await self.server.discord_queue.drain()
+        self.assertTrue(result['role_assigned'])
+        self.assertIsNone(result.get('nickname_synced'))
+        member.edit.assert_not_awaited()
+
+
 

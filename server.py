@@ -38,6 +38,14 @@ verification_locks = WeakValueDictionary()
 ENABLE_KICKOFF_ROLE = True
 # ==============================================================================
 
+# ==============================================================================
+# 👤 NICKNAME SYNC TOGGLE
+# Set ENABLE_NICKNAME_SYNC = False to disable syncing member nicknames to their
+# full name in DB. (You can also toggle this via SYNC_NICKNAME_ON_VERIFY=false in .env)
+# ==============================================================================
+ENABLE_NICKNAME_SYNC = True
+# ==============================================================================
+
 
 class VerifySuccessRequest(BaseModel):
     discord_id: str
@@ -229,6 +237,31 @@ async def verify_success(
         return await _assign_verified_role(guild, payload)
 
 
+def _fetch_user_full_name(db, discord_id: str, email: Optional[str] = None) -> Optional[str]:
+    """Retrieve full name for a verified user from Firestore."""
+    try:
+        uid = verified_uid_for_discord(db, discord_id, email)
+        if uid:
+            doc = db.collection("users").document(uid).get()
+            if doc.exists:
+                data = doc.to_dict() or {}
+                name = data.get("full_name") or data.get("name")
+                if isinstance(name, str) and name.strip():
+                    return name.strip()
+        # Fallback: query users collection directly by discord_id
+        clean_id = str(discord_id).strip()
+        for stored_id in (clean_id, int(clean_id) if clean_id.isdigit() else clean_id):
+            query = db.collection("users").where("discord_id", "==", stored_id)
+            for doc in query.stream():
+                data = doc.to_dict() or {}
+                name = data.get("full_name") or data.get("name")
+                if isinstance(name, str) and name.strip():
+                    return name.strip()
+    except Exception as e:
+        print(f"[Server] Note: Could not retrieve full_name from DB: {e}")
+    return None
+
+
 async def _assign_verified_role(guild, payload):
     # 4. Locate Discord Member
     try:
@@ -304,10 +337,40 @@ async def _assign_verified_role(guild, payload):
             print(f"[Server] ERROR assigning role: {e}")
             raise HTTPException(status_code=500, detail=f"Failed to assign role: {e}")
 
+    # 5.5. Sync Nickname to Full Name from DB
+    nickname_synced = None
+    sync_nickname_enabled = ENABLE_NICKNAME_SYNC and os.getenv("SYNC_NICKNAME_ON_VERIFY", "true").lower() in ("true", "1", "yes")
+    if sync_nickname_enabled:
+        try:
+            full_name = await asyncio.to_thread(
+                _fetch_user_full_name, get_firestore_client(), payload.discord_id, payload.email
+            )
+            if not full_name and isinstance(payload.name, str) and payload.name.strip():
+                full_name = payload.name.strip()
+
+            if full_name:
+                target_nick = full_name.strip()[:32]
+                current_nick = getattr(member, "nick", None)
+                if current_nick != target_nick:
+                    await member.edit(nick=target_nick, reason=f"Google account verified: {payload.email}")
+                    nickname_synced = target_nick
+                    print(f"[Server] Updated nickname for {member.name} ({member.id}) to '{target_nick}'")
+                else:
+                    nickname_synced = target_nick
+        except discord.Forbidden:
+            print(f"[Server] Note: Bot lacks permission to edit nickname for {member.name} ({member.id}) - role hierarchy or server owner.")
+        except Exception as e:
+            print(f"[Server] Note: Failed to update nickname for {member.name} ({member.id}): {e}")
+
     # Do not claim a role was granted when it is not configured, and avoid
     # repeated DMs when a request is retried after a network failure.
     if not role_assigned or already_assigned:
-        return {"success": True, "role_assigned": role_assigned, "role_granted": role_name if role_assigned else None}
+        return {
+            "success": True,
+            "role_assigned": role_assigned,
+            "role_granted": role_name if role_assigned else None,
+            "nickname_synced": nickname_synced
+        }
 
     # 6. Send Direct Message Confirmation (Queued via DiscordQueueManager)
     try:
@@ -337,7 +400,8 @@ async def _assign_verified_role(guild, payload):
         "discord_id": payload.discord_id,
         "email": payload.email,
         "role_granted": role_name,
-        "role_assigned": role_assigned
+        "role_assigned": role_assigned,
+        "nickname_synced": nickname_synced
     }
 
 
