@@ -4,11 +4,11 @@ Discord bot and FastAPI backend service for Reinforce Club SST. Handles Google a
 
 ## Rollout status (28 September 2026)
 
-- [YUVI bridge PR #10](https://github.com/Reinforce-SST/YUVI/pull/10) is open, mergeable, and passing CI. It adds the dashboard ticket bridge and uses canonical Firebase UIDs for linked Discord members. This is **not deployed yet**.
-- The companion [Dashboard integration PR #35](https://github.com/Reinforce-SST/Reinforce-Student-Dashboard/pull/35) is also open. Its website and API must be deployed together with this bot change.
+- [YUVI bridge PR #10](https://github.com/Reinforce-SST/YUVI/pull/10) is open. It adds the dashboard ticket bridge and uses canonical Firebase UIDs for linked Discord members. Its code passed 29 local tests and CI, but this bridge is **not deployed yet**.
+- The integrated dashboard baseline is on `main` via [Dashboard PR #33](https://github.com/Reinforce-SST/Reinforce-Student-Dashboard/pull/33). [Dashboard follow-up PR #35](https://github.com/Reinforce-SST/Reinforce-Student-Dashboard/pull/35) remains open. The live Vercel site still serves the legacy Vite client.
 - The [hosted YUVI health endpoint](https://yuvi-182k.onrender.com/health) currently returns a 503 owner-suspended page. The [dashboard API health endpoint](https://api.reinforce-sst.com/health) returns 200; that alone does not verify the new bridge.
 
-Before member rollout, resume YUVI, deploy both PRs with a matching `BOT_INTERNAL_SECRET`, and test a real Google sign-in, Discord role grant, ticket thread creation, and message relay. See the [dashboard verification checklist](https://github.com/Reinforce-SST/Reinforce-Student-Dashboard/blob/integration/full-platform/docs/verification.md).
+Before member rollout, resume YUVI, deploy the pending changes with a matching `BOT_INTERNAL_SECRET`, switch Vercel to `web/`, and test a real Google sign-in, Discord role grant, ticket thread creation, and message relay. See the [dashboard verification checklist](https://github.com/Reinforce-SST/Reinforce-Student-Dashboard/blob/main/docs/verification.md).
 
 ---
 
