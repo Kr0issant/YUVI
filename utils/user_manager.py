@@ -1,7 +1,7 @@
 import asyncio
 from typing import Any, Dict, Optional
 from firebase_admin import firestore
-from utils.api_client import APIClient
+from utils.auth_links import verified_uid_for_discord
 from utils.firestore_client import get_firestore_client
 
 USERS_COLLECTION = "users"
@@ -14,91 +14,45 @@ class UserManager:
 
     @classmethod
     async def get_user(cls, discord_id: str) -> Optional[Dict[str, Any]]:
-        """Fetch full user record by Discord ID (Firestore canonical query with API fallback)."""
+        """Fetch the canonical profile for a proven Discord link."""
         clean_id = str(discord_id).strip()
 
-        # 1. Direct Firestore Query (returns full document with email)
         def _sync_get():
             try:
                 db = cls._get_db()
-                query = db.collection(USERS_COLLECTION).where("discord_id", "==", clean_id).limit(1)
-                docs = list(query.stream())
-                if docs:
-                    data = docs[0].to_dict()
-                    data["doc_id"] = docs[0].id
-                    return data
-
-                if clean_id.isdigit():
-                    query_int = db.collection(USERS_COLLECTION).where("discord_id", "==", int(clean_id)).limit(1)
-                    docs_int = list(query_int.stream())
-                    if docs_int:
-                        data = docs_int[0].to_dict()
-                        data["doc_id"] = docs_int[0].id
-                        return data
-
-                doc = db.collection(USERS_COLLECTION).document(clean_id).get()
-                if doc.exists:
-                    data = doc.to_dict()
-                    data["doc_id"] = doc.id
-                    return data
-
-                return None
+                uid = verified_uid_for_discord(db, clean_id)
+                if not uid:
+                    return None
+                doc = db.collection(USERS_COLLECTION).document(uid).get()
+                if not doc.exists:
+                    return None
+                return {**(doc.to_dict() or {}), "doc_id": doc.id}
             except Exception as e:
                 print(f"[UserManager] Firestore query error fetching user {discord_id}: {e}")
                 return None
 
-        user_doc = await asyncio.to_thread(_sync_get)
-        if user_doc:
-            return user_doc
-
-        # 2. Fallback via Backend API
-        res = await APIClient.get("users", params={"discord_id": clean_id})
-        if res and res.get("items"):
-            return res["items"][0]
-
-        res_direct = await APIClient.get(f"users/{clean_id}")
-        if res_direct and res_direct.get("id"):
-            return res_direct
-
-        return None
+        return await asyncio.to_thread(_sync_get)
 
     @classmethod
     async def get_user_by_email(cls, email: str) -> Optional[Dict[str, Any]]:
-        """Query user record by email (Firestore canonical query with API fallback)."""
+        """Query the canonical profile by email, ignoring stale aliases."""
         clean_email = str(email).lower().strip()
 
-        # 1. Direct Firestore Query
         def _sync_query():
             try:
                 db = cls._get_db()
-                query = db.collection(USERS_COLLECTION).where("email", "==", clean_email).limit(1)
-                docs = list(query.stream())
-                if docs:
-                    data = docs[0].to_dict()
-                    data["doc_id"] = docs[0].id
-                    return data
-
-                doc = db.collection(USERS_COLLECTION).document(clean_email).get()
-                if doc.exists:
-                    data = doc.to_dict()
-                    data["doc_id"] = doc.id
-                    return data
-
-                return None
+                docs = db.collection(USERS_COLLECTION).where("email", "==", clean_email).stream()
+                matches = [
+                    {**data, "doc_id": doc.id}
+                    for doc in docs
+                    if (data := doc.to_dict() or {}).get("id") == doc.id
+                ]
+                return matches[0] if len(matches) == 1 else None
             except Exception as e:
                 print(f"[UserManager] Firestore query error querying email {email}: {e}")
                 return None
 
-        user_doc = await asyncio.to_thread(_sync_query)
-        if user_doc:
-            return user_doc
-
-        # 2. Fallback via Backend API
-        res = await APIClient.get(f"users/{clean_email}")
-        if res and res.get("id"):
-            return res
-
-        return None
+        return await asyncio.to_thread(_sync_query)
 
     @classmethod
     async def unlink_user(cls, discord_id: str) -> bool:
@@ -145,4 +99,3 @@ class UserManager:
                 return False
 
         return await asyncio.to_thread(_sync_unlink)
-
