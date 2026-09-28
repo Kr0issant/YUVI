@@ -16,11 +16,13 @@ from pydantic import BaseModel
 from utils.firestore_client import get_firestore_client
 from yuvi_bot import YuviBot
 from utils.auth_links import require_verified_link
+from utils.discord_queue import DiscordQueueManager, DiscordTask
 
 # Initialize Firestore
 get_firestore_client()
 
 bot = YuviBot()
+discord_queue = DiscordQueueManager(bot)
 bot_startup_error: Optional[str] = None
 # Keep retries for the same member ordered without retaining idle locks forever.
 verification_locks = WeakValueDictionary()
@@ -65,10 +67,17 @@ async def lifespan(app: FastAPI):
 
         bot_task = asyncio.create_task(run_bot())
         print("[Server] Discord bot background task launched.")
+
+    # Start Discord task queue workers
+    discord_queue.start()
     
     yield
 
-    # Shutdown: Cleanly close Discord bot
+    # Shutdown: Cleanly drain and stop Discord task queue
+    print("[Server] Shutting down Discord task queue...")
+    await discord_queue.stop(timeout=5.0)
+
+    # Cleanly close Discord bot
     print("[Server] Shutting down Discord bot...")
     await bot.close()
     if 'bot_task' in locals() and not bot_task.done():
@@ -231,7 +240,7 @@ async def _assign_verified_role(guild, payload):
     if not role_assigned or already_assigned:
         return {"success": True, "role_assigned": role_assigned, "role_granted": role_name if role_assigned else None}
 
-    # 6. Send Direct Message Confirmation
+    # 6. Send Direct Message Confirmation (Queued via DiscordQueueManager)
     try:
         roles_formatted = " and ".join(f"**{r.name}**" for r in target_roles)
         role_plural = "s" if len(target_roles) > 1 else ""
@@ -246,9 +255,13 @@ async def _assign_verified_role(guild, payload):
             color=0x57F287
         )
         embed.set_footer(text="Reinforce Club SST • Verification System", icon_url=guild.icon.url if guild.icon else None)
-        await member.send(embed=embed)
+        await discord_queue.enqueue(DiscordTask(
+            task_type="direct_message",
+            payload={"member": member, "embed": embed},
+            dedup_key=f"welcome_dm_{member.id}"
+        ))
     except Exception as e:
-        print(f"[Server] Note: Could not send DM to user {member.id} (DMs might be closed): {e}")
+        print(f"[Server] Note: Could not enqueue DM for user {member.id}: {e}")
 
     return {
         "success": True,
@@ -311,7 +324,10 @@ async def relay_ticket_message(
         for idx, att_url in enumerate(payload.attachments, 1):
             embed.add_field(name=f"Attachment {idx}", value=f"[Download / View File]({att_url})", inline=False)
 
-    await channel.send(embed=embed)
+    await discord_queue.enqueue(DiscordTask(
+        task_type="thread_message",
+        payload={"channel": channel, "embed": embed}
+    ))
     return {"success": True, "ticket_id": payload.ticket_id}
 
 
