@@ -18,8 +18,14 @@ from utils.ticket_manager import TicketManager
 from views.ticket_controls import TicketControlView
 from yuvi_bot import YuviBot
 from utils.auth_links import require_verified_link, verified_uid_for_discord
+from utils.auth_links import require_verified_link
+from utils.discord_queue import DiscordQueueManager, DiscordTask
+
+# Initialize Firestore
+get_firestore_client()
 
 bot = YuviBot()
+discord_queue = DiscordQueueManager(bot)
 bot_startup_error: Optional[str] = None
 # Keep retries for the same member ordered without retaining idle locks forever.
 verification_locks = WeakValueDictionary()
@@ -130,10 +136,17 @@ async def lifespan(app: FastAPI):
 
         bot_task = asyncio.create_task(run_bot())
         print("[Server] Discord bot background task launched.")
+
+    # Start Discord task queue workers
+    discord_queue.start()
     
     yield
 
-    # Shutdown: Cleanly close Discord bot
+    # Shutdown: Cleanly drain and stop Discord task queue
+    print("[Server] Shutting down Discord task queue...")
+    await discord_queue.stop(timeout=5.0)
+
+    # Cleanly close Discord bot
     print("[Server] Shutting down Discord bot...")
     await bot.close()
     if 'bot_task' in locals() and not bot_task.done():
@@ -296,7 +309,7 @@ async def _assign_verified_role(guild, payload):
     if not role_assigned or already_assigned:
         return {"success": True, "role_assigned": role_assigned, "role_granted": role_name if role_assigned else None}
 
-    # 6. Send Direct Message Confirmation
+    # 6. Send Direct Message Confirmation (Queued via DiscordQueueManager)
     try:
         roles_formatted = " and ".join(f"**{r.name}**" for r in target_roles)
         role_plural = "s" if len(target_roles) > 1 else ""
@@ -311,9 +324,13 @@ async def _assign_verified_role(guild, payload):
             color=0x57F287
         )
         embed.set_footer(text="Reinforce Club SST • Verification System", icon_url=guild.icon.url if guild.icon else None)
-        await member.send(embed=embed)
+        await discord_queue.enqueue(DiscordTask(
+            task_type="direct_message",
+            payload={"member": member, "embed": embed},
+            dedup_key=f"welcome_dm_{member.id}"
+        ))
     except Exception as e:
-        print(f"[Server] Note: Could not send DM to user {member.id} (DMs might be closed): {e}")
+        print(f"[Server] Note: Could not enqueue DM for user {member.id}: {e}")
 
     return {
         "success": True,
@@ -325,6 +342,74 @@ async def _assign_verified_role(guild, payload):
 
 
 @app.post("/tickets/create-thread")
+class RelayMessageRequest(BaseModel):
+    ticket_id: str
+    thread_id: str
+    sender_uid: Optional[str] = None
+    sender_name: Optional[str] = None
+    content: str
+    attachments: Optional[list[str]] = None
+    secret: Optional[str] = None
+
+
+@app.post("/internal/tickets/relay-message")
+@app.post("/internal/tickets/message-out")
+async def relay_ticket_message(
+    payload: RelayMessageRequest,
+    x_internal_secret: Optional[str] = Header(None)
+):
+    """Internal webhook called when a user or admin posts a message on the Web Dashboard."""
+    expected_secret = os.getenv("BOT_INTERNAL_SECRET")
+    if expected_secret:
+        provided = payload.secret or x_internal_secret
+        if provided != expected_secret:
+            raise HTTPException(status_code=401, detail="Unauthorized: Invalid internal secret")
+
+    if not bot.is_ready():
+        raise HTTPException(status_code=503, detail="Discord bot not ready")
+
+    try:
+        thread_id_int = int(payload.thread_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid thread_id format")
+
+    channel = bot.get_channel(thread_id_int)
+    if not channel:
+        try:
+            channel = await bot.fetch_channel(thread_id_int)
+        except Exception as e:
+            raise HTTPException(status_code=404, detail=f"Thread channel not found: {e}")
+
+    if not isinstance(channel, (discord.Thread, discord.TextChannel)):
+        raise HTTPException(status_code=400, detail="Target channel is not a text thread")
+
+    sender = payload.sender_name or "Web Member"
+    embed = discord.Embed(
+        description=payload.content,
+        color=0x5865F2
+    )
+    embed.set_author(name=f"{sender} (via Dashboard)", icon_url="https://cdn.discordapp.com/embed/avatars/0.png")
+
+    if payload.attachments:
+        for idx, att_url in enumerate(payload.attachments, 1):
+            embed.add_field(name=f"Attachment {idx}", value=f"[Download / View File]({att_url})", inline=False)
+
+    await discord_queue.enqueue(DiscordTask(
+        task_type="thread_message",
+        payload={"channel": channel, "embed": embed}
+    ))
+    return {"success": True, "ticket_id": payload.ticket_id}
+
+
+class CreateThreadRequest(BaseModel):
+    ticket_id: str
+    category: str
+    title: str
+    creator_uid: Optional[str] = None
+    fields: Optional[dict] = None
+    secret: Optional[str] = None
+
+
 @app.post("/internal/tickets/create-thread")
 @app.post("/internal/tickets/thread-create")
 async def create_ticket_thread(

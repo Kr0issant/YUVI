@@ -10,6 +10,10 @@ class VerificationWebhookTests(unittest.IsolatedAsyncioTestCase):
         # Firebase and the Discord gateway are external; never connect in tests.
         with patch('utils.firestore_client.get_firestore_client', return_value=MagicMock()):
             self.server = importlib.import_module('server')
+
+    async def asyncTearDown(self):
+        await self.server.discord_queue.stop(timeout=1.0)
+
     async def test_missing_secret_fails_closed(self):
         with patch.dict(os.environ, {'BOT_INTERNAL_SECRET': ''}):
             with self.assertRaises(HTTPException) as error:
@@ -27,6 +31,7 @@ class VerificationWebhookTests(unittest.IsolatedAsyncioTestCase):
         bot = MagicMock(); bot.is_ready.return_value = True; bot.get_guild.return_value = guild
         with patch.dict(os.environ, {'BOT_INTERNAL_SECRET': 'expected', 'GUILD_ID': '123456', 'VERIFIED_ROLE_ID': '456789'}), patch.object(self.server, 'bot', bot), patch.object(self.server, 'get_firestore_client'), patch.object(self.server, 'require_verified_link'):
             result = await self.server.verify_success(self.server.VerifySuccessRequest(discord_id='123456', email='member@sst.scaler.com'), 'expected')
+        await self.server.discord_queue.drain()
         self.assertTrue(result['role_assigned'])
         member.send.assert_not_awaited()
         member.add_roles.assert_not_awaited()
@@ -58,6 +63,7 @@ class VerificationWebhookTests(unittest.IsolatedAsyncioTestCase):
         payload = self.server.VerifySuccessRequest(discord_id='123456', email='member@sst.scaler.com')
         with patch.dict(os.environ, {'BOT_INTERNAL_SECRET': 'expected', 'GUILD_ID': '123456', 'VERIFIED_ROLE_ID': '456789'}), patch.object(self.server, 'bot', bot), patch.object(self.server, 'get_firestore_client'), patch.object(self.server, 'require_verified_link'):
             results = await asyncio.gather(*(self.server.verify_success(payload, 'expected') for _ in range(3)))
+        await self.server.discord_queue.drain()
         self.assertTrue(all(result['role_assigned'] for result in results))
         add_roles.assert_awaited_once()
         send.assert_awaited_once()
@@ -79,6 +85,7 @@ class VerificationWebhookTests(unittest.IsolatedAsyncioTestCase):
             'KICKOFF_ROLE_ID': '202'
         }), patch.object(self.server, 'bot', bot), patch.object(self.server, 'get_firestore_client'), patch.object(self.server, 'require_verified_link'):
             result = await self.server.verify_success(payload, 'expected')
+        await self.server.discord_queue.drain()
         self.assertTrue(result['role_assigned'])
         self.assertIn('Verified Member', result['role_granted'])
         self.assertIn('Kickoff', result['role_granted'])
@@ -103,6 +110,7 @@ class VerificationWebhookTests(unittest.IsolatedAsyncioTestCase):
             'ASSIGN_KICKOFF_ROLE': 'false'
         }), patch.object(self.server, 'bot', bot), patch.object(self.server, 'get_firestore_client'), patch.object(self.server, 'require_verified_link'):
             result = await self.server.verify_success(payload, 'expected')
+        await self.server.discord_queue.drain()
         self.assertTrue(result['role_assigned'])
         self.assertEqual(result['role_granted'], 'Verified Member')
         member.add_roles.assert_awaited_once_with(v_role, reason='Google account verified: member@sst.scaler.com')
