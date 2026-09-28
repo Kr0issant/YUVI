@@ -19,31 +19,12 @@ class TicketManager:
 
     @classmethod
     async def create_ticket(cls, ticket: Ticket) -> str:
-        """Create a new ticket via backend API (/api/v1/tickets) with Firestore fallback."""
-        payload = {
-            "category": ticket.category.value if isinstance(ticket.category, TicketCategory) else str(ticket.category),
-            "title": ticket.title,
-            "description": ticket.description,
-            "fields": ticket.fields,
-            "spg_id": ticket.spg_id,
-        }
+        """Store a Discord-created ticket with its Discord creator identity.
 
-        # Try API creation first
-        api_res = await APIClient.post("tickets", json_data=payload)
-        if api_res and api_res.get("id"):
-            ticket_id = api_res["id"]
-            ticket.id = ticket_id
-            # Sync discord_meta to the ticket doc in Firestore
-            if ticket.discord_meta:
-                await cls.update_ticket(ticket_id, {
-                    "discord_meta": ticket.discord_meta.to_dict(),
-                    "thread_id": ticket.thread_id or ticket.discord_meta.thread_id,
-                    "guild_id": ticket.guild_id or ticket.discord_meta.guild_id,
-                    "created_by": ticket.created_by.to_dict() if ticket.created_by else None
-                })
-            return ticket_id
-
-        # Direct Firestore Fallback
+        The dashboard's member-create endpoint derives its creator from the
+        caller's token. Calling it with YUVI's service secret would attribute
+        the ticket to ``yuvi-bot`` and dispatch another thread request.
+        """
         def _sync_create():
             try:
                 db = cls._get_db()
@@ -58,7 +39,7 @@ class TicketManager:
                 return doc_ref.id
             except Exception as e:
                 print(f"[TicketManager] Error creating ticket in Firestore: {e}")
-                raise e
+                raise
 
         return await asyncio.to_thread(_sync_create)
 
@@ -227,14 +208,13 @@ class TicketManager:
 
     @classmethod
     async def claim_ticket(cls, ticket_id: str, admin: TicketUser) -> bool:
-        """Claim ticket via API / Firestore."""
-        # 1. Update Firestore
+        """Claim a ticket under the linked member UID when available."""
         def _sync_claim():
             db = cls._get_db()
             ticket_ref = db.collection(TICKETS_COLLECTION).document(ticket_id)
             ticket_ref.update({
                 "assigned_to": admin.to_dict(),
-                "assigned_to_uid": admin.uid or admin.discord_id,
+                "assigned_to_uid": admin.uid or verified_uid_for_discord(db, admin.discord_id),
                 "status": TicketStatus.IN_PROGRESS.value,
                 "updated_at": firestore.SERVER_TIMESTAMP
             })
@@ -244,17 +224,14 @@ class TicketManager:
 
     @classmethod
     async def close_ticket(cls, ticket_id: str, closed_by: TicketUser, reason: Optional[str] = None) -> bool:
-        """Close ticket via API (/api/v1/tickets/{ticket_id}/close) with Firestore fallback."""
-        payload = {"close_reason": reason or "Closed from Discord"}
-        await APIClient.post(f"tickets/{ticket_id}/close", json_data=payload)
-
+        """Close a Discord ticket without attributing it to YUVI's service UID."""
         def _sync_close():
             db = cls._get_db()
             ticket_ref = db.collection(TICKETS_COLLECTION).document(ticket_id)
             ticket_ref.update({
                 "status": TicketStatus.CLOSED.value,
                 "closed_by": closed_by.to_dict(),
-                "closed_by_uid": closed_by.uid or closed_by.discord_id,
+                "closed_by_uid": closed_by.uid or verified_uid_for_discord(db, closed_by.discord_id),
                 "close_reason": reason or "No reason provided",
                 "closed_at": firestore.SERVER_TIMESTAMP,
                 "updated_at": firestore.SERVER_TIMESTAMP

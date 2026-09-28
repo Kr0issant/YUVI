@@ -20,28 +20,36 @@ def issue_link(db, discord_id, frontend_url, now=None):
 
 
 def require_verified_link(db, discord_id, email):
-    email = email.lower().strip()
-    alias = db.collection('users').document(discord_id).get().to_dict() or {}
-    primary = db.collection('users').document(email).get().to_dict() or {}
-    for record in (alias, primary):
-        if (record.get('email') != email or str(record.get('discord_id')) != discord_id
-                or record.get('discord_link_version') != 1):
-            raise HTTPException(403, 'A verified Discord link is required.')
+    """Accept only the canonical UID profile linked to this Discord account."""
+    if not verified_uid_for_discord(db, discord_id, email):
+        raise HTTPException(403, 'A verified Discord link is required.')
 
 
-def verified_uid_for_discord(db, discord_id):
-    """Return the UID only when the Discord and email aliases agree on proof."""
-    discord_id = str(discord_id)
-    alias = db.collection('users').document(discord_id).get().to_dict() or {}
-    email = alias.get('email')
-    uid = alias.get('firebase_uid')
-    if not email or not uid or alias.get('discord_link_version') != 1:
+def verified_uid_for_discord(db, discord_id, email=None):
+    """Resolve a proven Discord link to its canonical Firebase UID.
+
+    Older email/Discord lookup documents can remain in the shared collection;
+    they are never proof of ownership or a ticket creator identity.
+    """
+    discord_id = str(discord_id).strip()
+    if not discord_id.isdigit():
         return None
-    primary = db.collection('users').document(str(email).lower().strip()).get().to_dict() or {}
-    if str(primary.get('firebase_uid')) != str(uid):
+    expected_email = str(email).lower().strip() if email else None
+    matches = {}
+    for stored_id in (discord_id, int(discord_id)):
+        query = db.collection('users').where('discord_id', '==', stored_id)
+        for doc in query.stream():
+            record = doc.to_dict() or {}
+            if record.get('id') != doc.id or record.get('discord_link_version') != 1:
+                continue
+            if record.get('firebase_uid') not in (None, doc.id):
+                continue
+            record_email = str(record.get('email') or '').lower().strip()
+            if not record_email:
+                continue
+            if str(record.get('discord_id') or '').strip() == discord_id:
+                matches[doc.id] = record_email
+    if len(matches) != 1:
         return None
-    try:
-        require_verified_link(db, discord_id, email)
-    except HTTPException:
-        return None
-    return str(uid)
+    uid, actual_email = next(iter(matches.items()))
+    return uid if not expected_email or actual_email == expected_email else None

@@ -320,7 +320,7 @@ class BridgeTests(unittest.TestCase):
         discord_id = "555"
         email = "member@sst.scaler.com"
         records = {
-            "uid-1": {"email": email, "discord_id": discord_id, "discord_link_version": 1},
+            "uid-1": {"id": "uid-1", "email": email, "discord_id": "other", "discord_link_version": 1},
             discord_id: {"email": email, "discord_id": discord_id, "discord_link_version": 1, "firebase_uid": "uid-2"},
             email: {"email": email, "discord_id": discord_id, "discord_link_version": 1, "firebase_uid": "uid-2"},
         }
@@ -329,12 +329,14 @@ class BridgeTests(unittest.TestCase):
             data = records.get(key)
             return SimpleNamespace(get=lambda: SimpleNamespace(exists=data is not None, to_dict=lambda: data))
         db.collection.return_value.document.side_effect = document
+        db.collection.return_value.where.side_effect = lambda field, _op, value: FakeIdeaQuery(
+            [FakeIdeaDoc(key, data) for key, data in records.items()]
+        ).where(field, "==", value)
         with patch.object(server, "get_firestore_client", return_value=db):
             with self.assertRaises(server.HTTPException) as error:
                 asyncio.run(server.user_discord_id("uid-1"))
             self.assertEqual(error.exception.status_code, 409)
-            records[discord_id]["firebase_uid"] = "uid-1"
-            records[email]["firebase_uid"] = "uid-1"
+            records["uid-1"]["discord_id"] = discord_id
             self.assertEqual(asyncio.run(server.user_discord_id("uid-1")), discord_id)
 
 
@@ -391,6 +393,35 @@ class IdeaContractTests(unittest.TestCase):
         with patch.object(IdeaManager, "_get_db", return_value=db):
             ideas = asyncio.run(IdeaManager.list_ideas(track="other"))
         self.assertEqual({idea.id for idea in ideas}, {"canonical", "legacy"})
+
+    def test_discord_idea_uses_member_uid_without_member_create_endpoint(self):
+        db = MagicMock()
+        db.collection.return_value.document.return_value.id = "idea-1"
+        idea = Idea(title="Idea", created_by=TicketUser(discord_id="555", username="Member"))
+        with (
+            patch.object(IdeaManager, "_get_db", return_value=db),
+            patch("utils.idea_manager._user_uid", return_value="uid-1"),
+            patch("utils.idea_manager.APIClient.post", AsyncMock()) as member_post,
+        ):
+            idea_id = asyncio.run(IdeaManager.create_idea(idea))
+        self.assertEqual(idea_id, "idea-1")
+        self.assertEqual(db.collection.return_value.document.return_value.set.call_args.args[0]["created_by_uid"], "uid-1")
+        member_post.assert_not_awaited()
+
+    def test_discord_approval_uses_admin_uid_without_member_approve_endpoint(self):
+        db = MagicMock()
+        idea_ref = db.collection.return_value.document.return_value
+        idea_ref.get.return_value.exists = True
+        admin = TicketUser(discord_id="777", username="Admin")
+        with (
+            patch.object(IdeaManager, "_get_db", return_value=db),
+            patch("utils.idea_manager._user_uid", return_value="admin-uid"),
+            patch("utils.idea_manager.APIClient.post", AsyncMock()) as member_post,
+        ):
+            approved = asyncio.run(IdeaManager.approve_idea("idea-1", admin))
+        self.assertTrue(approved)
+        self.assertEqual(idea_ref.update.call_args.args[0]["approved_by_uid"], "admin-uid")
+        member_post.assert_not_awaited()
 
 
 class TicketContractTests(unittest.TestCase):
@@ -456,18 +487,34 @@ class TicketContractTests(unittest.TestCase):
             message_id = asyncio.run(TicketManager.add_ticket_message("ticket-1", message))
         self.assertEqual(message_id, "msg_discord_existing")
 
-    def test_discord_ticket_fallback_records_verified_creator_uid(self):
+    def test_discord_ticket_stores_verified_creator_without_reentering_member_api(self):
         db = MagicMock()
         db.collection.return_value.document.return_value.id = "ticket-1"
         ticket = Ticket(created_by=TicketUser(discord_id="555", username="Member"))
         with (
-            patch("utils.ticket_manager.APIClient.post", AsyncMock(return_value=None)),
+            patch("utils.ticket_manager.APIClient.post", AsyncMock()) as member_post,
             patch("utils.ticket_manager.verified_uid_for_discord", return_value="uid-1"),
             patch.object(TicketManager, "_get_db", return_value=db),
         ):
             ticket_id = asyncio.run(TicketManager.create_ticket(ticket))
         self.assertEqual(ticket_id, "ticket-1")
         self.assertEqual(db.collection.return_value.document.return_value.set.call_args.args[0]["created_by_uid"], "uid-1")
+        member_post.assert_not_awaited()
+
+    def test_discord_claim_and_close_use_member_uids_without_member_close_endpoint(self):
+        db = MagicMock()
+        ticket_ref = db.collection.return_value.document.return_value
+        member = TicketUser(discord_id="555", username="Member")
+        with (
+            patch.object(TicketManager, "_get_db", return_value=db),
+            patch("utils.ticket_manager.verified_uid_for_discord", return_value="uid-1"),
+            patch("utils.ticket_manager.APIClient.post", AsyncMock()) as member_post,
+        ):
+            self.assertTrue(asyncio.run(TicketManager.claim_ticket("ticket-1", member)))
+            self.assertEqual(ticket_ref.update.call_args.args[0]["assigned_to_uid"], "uid-1")
+            self.assertTrue(asyncio.run(TicketManager.close_ticket("ticket-1", member, "Done")))
+            self.assertEqual(ticket_ref.update.call_args.args[0]["closed_by_uid"], "uid-1")
+        member_post.assert_not_awaited()
 
 
 if __name__ == "__main__":

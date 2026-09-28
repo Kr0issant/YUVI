@@ -5,7 +5,9 @@ from firebase_admin import firestore
 
 class TicketCategory(str, Enum):
     SPG_REGISTRATION = "spg_registration"
-    RESOURCE_REQUEST = "resource_request"
+    RESOURCE_REQUEST = "resource_request"  # Legacy alias
+    COMPUTE_RESOURCE_REQUEST = "compute_resource_request"
+    LEARNING_RESOURCE_REQUEST = "learning_resource_request"
     SUPPORT = "support"
     IDEA_JAR = "idea_jar"
     FEEDBACK = "feedback"
@@ -16,7 +18,9 @@ class TicketCategory(str, Enum):
     def label(self) -> str:
         labels = {
             TicketCategory.SPG_REGISTRATION: "🚀 SPG Registration / Modification",
-            TicketCategory.RESOURCE_REQUEST: "⚡ Resource Request",
+            TicketCategory.RESOURCE_REQUEST: "⚡ Compute Resource Request",
+            TicketCategory.COMPUTE_RESOURCE_REQUEST: "⚡ Compute Resource Request",
+            TicketCategory.LEARNING_RESOURCE_REQUEST: "📚 Learning Resource Request",
             TicketCategory.SUPPORT: "💬 Support & General Inquiries",
             TicketCategory.IDEA_JAR: "💡 Idea Jar & Suggestions",
             TicketCategory.FEEDBACK: "📝 General Feedback & Suggestions",
@@ -29,7 +33,9 @@ class TicketCategory(str, Enum):
     def short_name(self) -> str:
         shorts = {
             TicketCategory.SPG_REGISTRATION: "spg",
-            TicketCategory.RESOURCE_REQUEST: "resource",
+            TicketCategory.RESOURCE_REQUEST: "compute",
+            TicketCategory.COMPUTE_RESOURCE_REQUEST: "compute",
+            TicketCategory.LEARNING_RESOURCE_REQUEST: "learning",
             TicketCategory.SUPPORT: "support",
             TicketCategory.IDEA_JAR: "idea",
             TicketCategory.FEEDBACK: "feedback",
@@ -43,6 +49,8 @@ class TicketCategory(str, Enum):
         emojis = {
             TicketCategory.SPG_REGISTRATION: "🚀",
             TicketCategory.RESOURCE_REQUEST: "⚡",
+            TicketCategory.COMPUTE_RESOURCE_REQUEST: "⚡",
+            TicketCategory.LEARNING_RESOURCE_REQUEST: "📚",
             TicketCategory.SUPPORT: "💬",
             TicketCategory.IDEA_JAR: "💡",
             TicketCategory.FEEDBACK: "📝",
@@ -56,6 +64,8 @@ class TicketCategory(str, Enum):
         descriptions = {
             TicketCategory.SPG_REGISTRATION: "Register or update a Student Project Group (Product, Kaggle, Research)",
             TicketCategory.RESOURCE_REQUEST: "Request GPU/Compute, hardware, API credits, or mentorship (SPG only)",
+            TicketCategory.COMPUTE_RESOURCE_REQUEST: "Request GPU/Compute, hardware, API credits, or mentorship (SPG only)",
+            TicketCategory.LEARNING_RESOURCE_REQUEST: "Suggest or request learning roadmaps, articles, books, or video guides",
             TicketCategory.SUPPORT: "Get help with club activities, roles, events, or tracks",
             TicketCategory.IDEA_JAR: "Submit project ideas or suggest improvements for the club",
             TicketCategory.FEEDBACK: "Share feedback or suggestions to improve the club",

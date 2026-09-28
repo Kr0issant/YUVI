@@ -44,7 +44,7 @@ YUVI/
    {FRONTEND_AUTH_URL}#link_token={private_one_time_token}
    ```
 4. The user completes Google OAuth with their `@sst.scaler.com` account on the frontend.
-5. The main backend validates the Firebase token, verified email domain, one-time proof, and duplicate accounts, then atomically saves the profile to Firestore under `users/{discord_id}`, and issues a POST request to YUVI's internal webhook.
+5. The main backend validates the Firebase token, verified email domain, one-time proof, and duplicate accounts, then atomically updates the profile in Firestore under `users/{uid}` (with `discord_id`), and issues a POST request to YUVI's internal webhook.
 6. YUVI assigns the verified role to the user and sends a confirmation DM.
 
 ```mermaid
@@ -110,7 +110,7 @@ partially completed setup without creating a duplicate thread.
 
 | Category | Purpose | Modal Fields |
 |---|---|---|
-| **SPG Registration / Modification** | Register or update a Student Project Group (Product, Kaggle, Research) | Project Name & Track, Leader & Members, Estimated Duration, Goals & Next Steps |
+| **SPG Registration / Modification** | Register or update a Student Project Group | Project Name & Track, Team Leader UID (mandatory club member), Team Member UIDs (optional, newline-separated, up to 6), Duration (in days), Report Frequency (in days) |
 | **Resource Request** | Request compute/GPU, hardware, API credits, mentorship | Project Name, Resources Needed, Progress Proof Links, Justification |
 | **Support & Inquiries** | General questions regarding club tracks, events, activities | Subject, Details |
 | **Idea Jar & Suggestions** | Propose ideas for others to build or general club feedback | Idea Title, Track, Learning Objectives & Description |
@@ -189,8 +189,8 @@ longer establish ownership. Existing members run `/auth` again to receive proof.
 `discord_link_tokens/{sha256(token)}` stores `discord_id`, native timestamp
 `issued_at`, native timestamp `expires_at` (ten minutes), and `consumed_by: null`.
 The API consumes it transactionally, adding `consumed_by` (Firebase UID), `email`,
-and `consumed_at`, and sets `discord_link_version: 1` on both `users/{email}` and
-`users/{discord_id}`. The webhook checks both records as well as the shared secret.
+and `consumed_at`, and sets `discord_link_version: 1` on the canonical `users/{uid}`
+record. The webhook checks the record as well as the shared secret.
 Client Firestore rules must deny access to this collection and writes to user
 records. Optional TTL on `expires_at` is for cleanup; the API checks expiry itself.
 

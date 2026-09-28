@@ -20,31 +20,11 @@ class IdeaManager:
 
     @classmethod
     async def create_idea(cls, idea: Idea) -> str:
-        """Create a new idea via API (/api/v1/ideas) with Firestore fallback."""
-        payload = {
-            "title": idea.title,
-            "description": idea.description,
-            "track": "misc" if idea.track in ("other", "general") else idea.track.lower(),
-            "difficulty": idea.difficulty.lower() if idea.difficulty else "intermediate",
-            "prerequisites": idea.prerequisites,
-            "rough_roadmap": idea.rough_roadmap,
-            "learning_outcomes": idea.learning_outcomes,
-        }
+        """Store a Discord idea with the member's canonical creator UID.
 
-        res = await APIClient.post("ideas", json_data=payload)
-        if res and res.get("id"):
-            idea_id = res["id"]
-            idea.id = idea_id
-            if idea.created_by:
-                def _sync_creator_patch():
-                    db = cls._get_db()
-                    db.collection(IDEAS_COLLECTION).document(idea_id).set({
-                        "created_by": idea.created_by.to_dict()
-                    }, merge=True)
-                await asyncio.to_thread(_sync_creator_patch)
-            return idea_id
-
-        # Direct Firestore Fallback
+        The dashboard member-create route would otherwise record YUVI's
+        service identity as the idea creator.
+        """
         def _sync_create():
             try:
                 db = cls._get_db()
@@ -56,7 +36,7 @@ class IdeaManager:
                 return doc_ref.id
             except Exception as e:
                 print(f"[IdeaManager] Error creating idea in Firestore: {e}")
-                raise e
+                raise
 
         return await asyncio.to_thread(_sync_create)
 
@@ -155,12 +135,8 @@ class IdeaManager:
 
     @classmethod
     async def approve_idea(cls, idea_id: str, admin: TicketUser) -> bool:
-        """Mark an idea as approved via API / Firestore."""
+        """Mark an idea approved under the Discord admin's identity."""
         clean_id = idea_id.strip()
-        res = await APIClient.post(f"ideas/{clean_id}/approve")
-        if res:
-            return True
-
         def _sync_approve():
             try:
                 db = cls._get_db()
