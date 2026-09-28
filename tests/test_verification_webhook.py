@@ -61,3 +61,50 @@ class VerificationWebhookTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(all(result['role_assigned'] for result in results))
         add_roles.assert_awaited_once()
         send.assert_awaited_once()
+
+    async def test_assigns_both_verified_and_kickoff_roles(self):
+        v_role = MagicMock(); v_role.id = 101; v_role.name = 'Verified Member'
+        k_role = MagicMock(); k_role.id = 202; k_role.name = 'Kickoff'
+        member = MagicMock(); member.roles = []; member.send = AsyncMock(); member.add_roles = AsyncMock()
+        guild = MagicMock()
+        guild.id = 123456
+        guild.fetch_member = AsyncMock(return_value=member)
+        guild.get_role.side_effect = lambda rid: v_role if rid == 101 else (k_role if rid == 202 else None)
+        bot = MagicMock(); bot.is_ready.return_value = True; bot.get_guild.return_value = guild
+        payload = self.server.VerifySuccessRequest(discord_id='123456', email='member@sst.scaler.com')
+        with patch.dict(os.environ, {
+            'BOT_INTERNAL_SECRET': 'expected',
+            'GUILD_ID': '123456',
+            'VERIFIED_ROLE_ID': '101',
+            'KICKOFF_ROLE_ID': '202'
+        }), patch.object(self.server, 'bot', bot), patch.object(self.server, 'get_firestore_client'), patch.object(self.server, 'require_verified_link'):
+            result = await self.server.verify_success(payload, 'expected')
+        self.assertTrue(result['role_assigned'])
+        self.assertIn('Verified Member', result['role_granted'])
+        self.assertIn('Kickoff', result['role_granted'])
+        member.add_roles.assert_awaited_once_with(v_role, k_role, reason='Google account verified: member@sst.scaler.com')
+        member.send.assert_awaited_once()
+
+    async def test_disabled_kickoff_role_only_grants_verified(self):
+        v_role = MagicMock(); v_role.id = 101; v_role.name = 'Verified Member'
+        k_role = MagicMock(); k_role.id = 202; k_role.name = 'Kickoff'
+        member = MagicMock(); member.roles = []; member.send = AsyncMock(); member.add_roles = AsyncMock()
+        guild = MagicMock()
+        guild.id = 123456
+        guild.fetch_member = AsyncMock(return_value=member)
+        guild.get_role.side_effect = lambda rid: v_role if rid == 101 else (k_role if rid == 202 else None)
+        bot = MagicMock(); bot.is_ready.return_value = True; bot.get_guild.return_value = guild
+        payload = self.server.VerifySuccessRequest(discord_id='123456', email='member@sst.scaler.com')
+        with patch.dict(os.environ, {
+            'BOT_INTERNAL_SECRET': 'expected',
+            'GUILD_ID': '123456',
+            'VERIFIED_ROLE_ID': '101',
+            'KICKOFF_ROLE_ID': '202',
+            'ASSIGN_KICKOFF_ROLE': 'false'
+        }), patch.object(self.server, 'bot', bot), patch.object(self.server, 'get_firestore_client'), patch.object(self.server, 'require_verified_link'):
+            result = await self.server.verify_success(payload, 'expected')
+        self.assertTrue(result['role_assigned'])
+        self.assertEqual(result['role_granted'], 'Verified Member')
+        member.add_roles.assert_awaited_once_with(v_role, reason='Google account verified: member@sst.scaler.com')
+
+
