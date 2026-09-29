@@ -405,7 +405,6 @@ async def _assign_verified_role(guild, payload):
     }
 
 
-@app.post("/tickets/create-thread")
 class RelayMessageRequest(BaseModel):
     ticket_id: str
     thread_id: str
@@ -416,6 +415,7 @@ class RelayMessageRequest(BaseModel):
     secret: Optional[str] = None
 
 
+@app.post("/tickets/relay-message")
 @app.post("/internal/tickets/relay-message")
 @app.post("/internal/tickets/message-out")
 async def relay_ticket_message(
@@ -465,15 +465,7 @@ async def relay_ticket_message(
     return {"success": True, "ticket_id": payload.ticket_id}
 
 
-class CreateThreadRequest(BaseModel):
-    ticket_id: str
-    category: str
-    title: str
-    creator_uid: Optional[str] = None
-    fields: Optional[dict] = None
-    secret: Optional[str] = None
-
-
+@app.post("/tickets/create-thread")
 @app.post("/internal/tickets/create-thread")
 @app.post("/internal/tickets/thread-create")
 async def create_ticket_thread(
