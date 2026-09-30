@@ -61,6 +61,14 @@ class AuthLinkTests(unittest.TestCase):
         self.assertEqual(data['discord_id'], '123456789012345678')
         self.assertEqual((data['expires_at'] - now).total_seconds(), 600)
         self.assertNotIn(token, repr(data))
+
+    def test_issue_link_records_discord_username_when_provided(self):
+        db = MagicMock()
+        now = datetime(2026, 9, 24, tzinfo=timezone.utc)
+        url = issue_link(db, '123456789012345678', 'https://club.example/auth', now, discord_username='testuser')
+        data = db.collection.return_value.document.return_value.create.call_args.args[0]
+        self.assertEqual(data.get('discord_username'), 'testuser')
+
     def test_webhook_rejects_unproven_link(self):
         db = UsersDB({'uid-1': {'id': 'uid-1', 'email': 'member@sst.scaler.com', 'discord_id': '123'}})
         with self.assertRaises(HTTPException): require_verified_link(db, '123', 'member@sst.scaler.com')

@@ -188,5 +188,27 @@ class VerificationWebhookTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(result.get('nickname_synced'))
         member.edit.assert_not_awaited()
 
+    async def test_returns_discord_username_and_syncs_social_links(self):
+        role = MagicMock(); role.name = 'Verified Member'
+        member = MagicMock(); member.roles = []; member.nick = None; member.name = 'alice_discord'
+        member.send = AsyncMock(); member.add_roles = AsyncMock()
+        guild = MagicMock(); guild.id = 123456
+        guild.fetch_member = AsyncMock(return_value=member)
+        guild.get_role.return_value = role
+        bot = MagicMock(); bot.is_ready.return_value = True; bot.get_guild.return_value = guild
+        payload = self.server.VerifySuccessRequest(discord_id='123456', email='member@sst.scaler.com')
+        with patch.dict(os.environ, {
+            'BOT_INTERNAL_SECRET': 'expected',
+            'GUILD_ID': '123456',
+            'VERIFIED_ROLE_ID': '101',
+            'ASSIGN_KICKOFF_ROLE': 'false',
+        }), patch.object(self.server, 'bot', bot), patch.object(self.server, 'get_firestore_client'), \
+           patch.object(self.server, 'require_verified_link'), \
+           patch.object(self.server, '_sync_discord_social_link') as mock_sync:
+            result = await self.server.verify_success(payload, 'expected')
+        await self.server.discord_queue.drain()
+        self.assertEqual(result.get('discord_username'), 'alice_discord')
+        mock_sync.assert_called_once()
+
 
 

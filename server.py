@@ -18,7 +18,6 @@ from utils.ticket_manager import TicketManager
 from views.ticket_controls import TicketControlView
 from yuvi_bot import YuviBot
 from utils.auth_links import require_verified_link, verified_uid_for_discord
-from utils.auth_links import require_verified_link
 from utils.discord_queue import DiscordQueueManager, DiscordTask
 
 # Initialize Firestore
@@ -262,6 +261,36 @@ def _fetch_user_full_name(db, discord_id: str, email: Optional[str] = None) -> O
     return None
 
 
+def _sync_discord_social_link(db, discord_id: str, discord_username: str, email: Optional[str] = None) -> None:
+    """Save the member's Discord username to social_links.discord in Firestore."""
+    clean_username = str(discord_username).strip() if discord_username else ""
+    if not clean_username:
+        return
+    try:
+        uid = verified_uid_for_discord(db, discord_id, email)
+        if not uid:
+            clean_id = str(discord_id).strip()
+            for stored_id in (clean_id, int(clean_id) if clean_id.isdigit() else clean_id):
+                query = db.collection("users").where("discord_id", "==", stored_id)
+                for doc in query.stream():
+                    uid = doc.id
+                    break
+                if uid:
+                    break
+        if uid:
+            doc_ref = db.collection("users").document(uid)
+            doc_snap = doc_ref.get()
+            if doc_snap.exists:
+                data = doc_snap.to_dict() or {}
+                social_links = dict(data.get("social_links") or {})
+                if social_links.get("discord") != clean_username:
+                    social_links["discord"] = clean_username
+                    doc_ref.set({"social_links": social_links}, merge=True)
+                    print(f"[Server] Synced social_links.discord for {uid} ({discord_id}) to '{clean_username}'")
+    except Exception as e:
+        print(f"[Server] Note: Could not sync social_links.discord to DB: {e}")
+
+
 async def _assign_verified_role(guild, payload):
     # 4. Locate Discord Member
     try:
@@ -362,11 +391,24 @@ async def _assign_verified_role(guild, payload):
         except Exception as e:
             print(f"[Server] Note: Failed to update nickname for {member.name} ({member.id}): {e}")
 
+    # 5.6. Sync Discord Username to Member's Social Links in DB
+    discord_username = getattr(member, "name", None)
+    discord_user_str = str(discord_username).strip() if isinstance(discord_username, str) and discord_username.strip() else None
+    if discord_user_str:
+        try:
+            await asyncio.to_thread(
+                _sync_discord_social_link, get_firestore_client(), payload.discord_id, discord_user_str, payload.email
+            )
+        except Exception as e:
+            print(f"[Server] Note: Failed to sync social links for {member.id}: {e}")
+
     # Do not claim a role was granted when it is not configured, and avoid
     # repeated DMs when a request is retried after a network failure.
     if not role_assigned or already_assigned:
         return {
             "success": True,
+            "discord_id": payload.discord_id,
+            "discord_username": discord_user_str,
             "role_assigned": role_assigned,
             "role_granted": role_name if role_assigned else None,
             "nickname_synced": nickname_synced
@@ -398,6 +440,7 @@ async def _assign_verified_role(guild, payload):
     return {
         "success": True,
         "discord_id": payload.discord_id,
+        "discord_username": discord_user_str,
         "email": payload.email,
         "role_granted": role_name,
         "role_assigned": role_assigned,

@@ -6,15 +6,18 @@ from urllib.parse import urlencode, urlsplit, urlunsplit
 from fastapi import HTTPException
 
 
-def issue_link(db, discord_id, frontend_url, now=None):
+def issue_link(db, discord_id, frontend_url, now=None, discord_username=None):
     now = now or datetime.now(timezone.utc)
     token = secrets.token_urlsafe(32)
-    db.collection('discord_link_tokens').document(sha256(token.encode()).hexdigest()).create({
+    record = {
         'discord_id': str(discord_id),
         'issued_at': now,
         'expires_at': now + timedelta(minutes=10),
         'consumed_by': None,
-    })
+    }
+    if discord_username:
+        record['discord_username'] = str(discord_username)
+    db.collection('discord_link_tokens').document(sha256(token.encode()).hexdigest()).create(record)
     url = urlsplit(frontend_url)
     return urlunsplit((url.scheme, url.netloc, url.path, '', urlencode({'link_token': token})))
 

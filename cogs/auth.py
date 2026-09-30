@@ -27,10 +27,13 @@ async def send_auth_link(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
 
     discord_id = str(interaction.user.id)
+    discord_username = str(interaction.user.name) if getattr(interaction.user, "name", None) else None
     # Fresh proof is also required for legacy links and role-grant retries.
     frontend_url = os.getenv("FRONTEND_AUTH_URL", "http://localhost:3000/auth")
     try:
-        auth_url = await asyncio.to_thread(issue_link, get_firestore_client(), discord_id, frontend_url)
+        auth_url = await asyncio.to_thread(
+            issue_link, get_firestore_client(), discord_id, frontend_url, discord_username=discord_username
+        )
     except Exception:
         await interaction.followup.send("Verification is temporarily unavailable. Please try /auth again shortly.", ephemeral=True)
         return
