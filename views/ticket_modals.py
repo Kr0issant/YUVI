@@ -13,6 +13,7 @@ from models.ticket import (
     TicketMessage
 )
 from utils.ticket_manager import TicketManager
+from utils.user_manager import UserManager
 
 async def create_ticket_thread_and_doc(
     interaction: discord.Interaction,
@@ -29,6 +30,15 @@ async def create_ticket_thread_and_doc(
 
     # Defer interaction response early to prevent timeout
     await interaction.response.defer(ephemeral=True, thinking=True)
+
+    # Prevent unverified users from creating tickets
+    if not await UserManager.is_user_verified(interaction.user, guild):
+        await interaction.followup.send(
+            "❌ **Verification Required**: You must be a verified member to create a support ticket.\n"
+            "Please verify your student Google account (`@sst.scaler.com`) via the verification portal or by running `/auth`.",
+            ephemeral=True
+        )
+        return
 
     # Determine channel for thread creation (configured channel or interaction channel)
     configured_channel_id = os.getenv("TICKETS_CHANNEL_ID")

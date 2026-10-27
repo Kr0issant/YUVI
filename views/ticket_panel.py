@@ -1,6 +1,7 @@
 import discord
 from discord import ui
 from models.ticket import TicketCategory
+from utils.user_manager import UserManager
 from views.ticket_modals import (
     ComputeResourceRequestModal,
     FeedbackModal,
@@ -73,6 +74,19 @@ class TicketCategorySelect(ui.Select):
         )
 
     async def callback(self, interaction: discord.Interaction):
+        if not await UserManager.is_user_verified(interaction.user, interaction.guild):
+            await interaction.response.send_message(
+                "❌ **Verification Required**: You must be a verified member to create a support ticket.\n"
+                "Please verify your student Google account (`@sst.scaler.com`) via the verification portal or by running `/auth`.",
+                ephemeral=True
+            )
+            try:
+                if interaction.message:
+                    await interaction.message.edit(view=TicketPanelView())
+            except Exception:
+                pass
+            return
+
         selected_value = self.values[0]
 
         if selected_value == TicketCategory.SPG_REGISTRATION.value:

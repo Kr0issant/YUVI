@@ -1,5 +1,6 @@
+import os
 import asyncio
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 from firebase_admin import firestore
 from utils.auth_links import verified_uid_for_discord
 from utils.firestore_client import get_firestore_client
@@ -99,3 +100,43 @@ class UserManager:
                 return False
 
         return await asyncio.to_thread(_sync_unlink)
+
+    @classmethod
+    async def is_user_verified(
+        cls,
+        user: Any,
+        guild: Optional[Any] = None
+    ) -> bool:
+        """Check whether a user is verified via Discord roles or linked in Firestore."""
+        # 1. Check roles if user is a Member or can be resolved as a Member
+        member = user if hasattr(user, "roles") else (guild.get_member(user.id) if guild and hasattr(guild, "get_member") else None)
+
+        if member:
+            # Administrators are always authorized
+            permissions = getattr(member, "guild_permissions", None)
+            if permissions and getattr(permissions, "administrator", False):
+                return True
+
+            role_ids = {str(getattr(r, "id", "")) for r in getattr(member, "roles", [])}
+            verified_role_id = os.getenv("VERIFIED_ROLE_ID")
+            admin_role_id = os.getenv("ADMIN_ROLE_ID")
+            support_role_id = os.getenv("SUPPORT_ROLE_ID")
+
+            for rid in (verified_role_id, admin_role_id, support_role_id):
+                if rid and str(rid).strip() in role_ids:
+                    return True
+
+            for r in getattr(member, "roles", []):
+                if getattr(r, "name", "").lower() in ("verified member", "verified", "member", "admin", "lead"):
+                    return True
+
+        # 2. Check Firestore canonical link
+        def _sync_check():
+            try:
+                db = cls._get_db()
+                return bool(verified_uid_for_discord(db, str(getattr(user, "id", user))))
+            except Exception as e:
+                print(f"[UserManager] Error checking verification in Firestore for {getattr(user, 'id', user)}: {e}")
+                return False
+
+        return await asyncio.to_thread(_sync_check)

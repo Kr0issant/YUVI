@@ -12,7 +12,10 @@ from models.idea import Idea
 from models.ticket import Ticket, TicketMessage, TicketUser, TicketStatus
 from utils.idea_manager import IdeaManager
 from utils.ticket_manager import TicketManager
+from utils.user_manager import UserManager
 from views.ticket_controls import TicketControlView
+from views.ticket_panel import TicketCategorySelect
+from views.ticket_modals import create_ticket_thread_and_doc
 from cogs.tickets import TicketsCog
 
 
@@ -599,6 +602,91 @@ class TicketContractTests(unittest.TestCase):
 
         thread.add_user.assert_awaited_once_with(interaction.user)
         interaction.response.send_message.assert_awaited_once()
+
+    def test_user_manager_is_user_verified_by_role(self):
+        import discord
+        user = MagicMock(spec=discord.Member)
+        verified_role = MagicMock()
+        verified_role.name = "Verified Member"
+        verified_role.id = 111111
+        user.roles = [verified_role]
+        user.guild_permissions.administrator = False
+
+        self.assertTrue(asyncio.run(UserManager.is_user_verified(user)))
+
+    def test_user_manager_is_user_verified_by_db(self):
+        import discord
+        user = MagicMock(spec=discord.Member)
+        user.id = 12345
+        user.roles = []
+        user.guild_permissions.administrator = False
+
+        db = MagicMock()
+        with (
+            patch.object(UserManager, "_get_db", return_value=db),
+            patch("utils.user_manager.verified_uid_for_discord", return_value="uid-12345"),
+        ):
+            self.assertTrue(asyncio.run(UserManager.is_user_verified(user)))
+
+    def test_user_manager_unverified_returns_false(self):
+        import discord
+        user = MagicMock(spec=discord.Member)
+        user.id = 99999
+        user.roles = []
+        user.guild_permissions.administrator = False
+
+        db = MagicMock()
+        with (
+            patch.object(UserManager, "_get_db", return_value=db),
+            patch("utils.user_manager.verified_uid_for_discord", return_value=None),
+        ):
+            self.assertFalse(asyncio.run(UserManager.is_user_verified(user)))
+
+    def test_ticket_category_select_blocks_unverified_user(self):
+        import discord
+        select = TicketCategorySelect()
+        select._values = ["spg_registration"]
+        interaction = MagicMock(spec=discord.Interaction)
+        interaction.user = MagicMock(spec=discord.Member)
+        interaction.user.id = 99999
+        interaction.guild = MagicMock(spec=discord.Guild)
+        interaction.response = MagicMock()
+        interaction.response.send_message = AsyncMock()
+        interaction.response.send_modal = AsyncMock()
+        interaction.message = MagicMock()
+        interaction.message.edit = AsyncMock()
+
+        with patch.object(UserManager, "is_user_verified", AsyncMock(return_value=False)):
+            asyncio.run(select.callback(interaction))
+
+        interaction.response.send_message.assert_awaited_once()
+        self.assertIn("Verification Required", interaction.response.send_message.call_args.args[0])
+        interaction.response.send_modal.assert_not_awaited()
+
+    def test_create_ticket_thread_and_doc_blocks_unverified_user(self):
+        import discord
+        from models.ticket import TicketCategory
+        interaction = MagicMock(spec=discord.Interaction)
+        interaction.guild = MagicMock(spec=discord.Guild)
+        interaction.user = MagicMock(spec=discord.Member)
+        interaction.user.id = 99999
+        interaction.response = MagicMock()
+        interaction.response.defer = AsyncMock()
+        interaction.followup = MagicMock()
+        interaction.followup.send = AsyncMock()
+
+        with patch.object(UserManager, "is_user_verified", AsyncMock(return_value=False)):
+            asyncio.run(create_ticket_thread_and_doc(
+                interaction=interaction,
+                category=TicketCategory.SUPPORT,
+                title="Help needed",
+                description="Need help",
+                fields={}
+            ))
+
+        interaction.followup.send.assert_awaited_once()
+        self.assertIn("Verification Required", interaction.followup.send.call_args.args[0])
+        interaction.guild.get_channel.assert_not_called()
 
 
 if __name__ == "__main__":
