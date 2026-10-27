@@ -9,9 +9,11 @@ from fastapi.testclient import TestClient
 
 import server
 from models.idea import Idea
-from models.ticket import Ticket, TicketMessage, TicketUser
+from models.ticket import Ticket, TicketMessage, TicketUser, TicketStatus
 from utils.idea_manager import IdeaManager
 from utils.ticket_manager import TicketManager
+from views.ticket_controls import TicketControlView
+from cogs.tickets import TicketsCog
 
 
 class FakeIdeaDoc:
@@ -543,6 +545,60 @@ class TicketContractTests(unittest.TestCase):
             self.assertTrue(asyncio.run(TicketManager.close_ticket("ticket-1", member, "Done")))
             self.assertEqual(ticket_ref.update.call_args.args[0]["closed_by_uid"], "uid-1")
         member_post.assert_not_awaited()
+
+    def test_ticket_control_claim_button_adds_admin_to_thread(self):
+        import discord
+        view = TicketControlView()
+        interaction = MagicMock(spec=discord.Interaction)
+        thread = MagicMock(spec=discord.Thread)
+        thread.id = 123456
+        thread.add_user = AsyncMock()
+        interaction.channel = thread
+        interaction.user = MagicMock(spec=discord.Member)
+        interaction.user.id = 999
+        interaction.user.name = "AdminUser"
+        interaction.user.display_avatar = None
+        interaction.user.mention = "<@999>"
+        interaction.response = MagicMock()
+        interaction.response.send_message = AsyncMock()
+
+        ticket = Ticket(id="ticket-1", status=TicketStatus.OPEN, thread_id="123456")
+
+        with (
+            patch.object(TicketManager, "get_ticket_by_thread_id", AsyncMock(return_value=ticket)),
+            patch.object(TicketManager, "claim_ticket", AsyncMock(return_value=True)),
+        ):
+            asyncio.run(view.claim_button.callback(interaction))
+
+        thread.add_user.assert_awaited_once_with(interaction.user)
+        interaction.response.send_message.assert_awaited_once()
+
+    def test_slash_ticket_claim_adds_admin_to_thread(self):
+        import discord
+        cog = TicketsCog(MagicMock())
+        interaction = MagicMock(spec=discord.Interaction)
+        thread = MagicMock(spec=discord.Thread)
+        thread.id = 123456
+        thread.add_user = AsyncMock()
+        interaction.channel = thread
+        interaction.user = MagicMock(spec=discord.Member)
+        interaction.user.id = 999
+        interaction.user.name = "AdminUser"
+        interaction.user.display_avatar = None
+        interaction.user.mention = "<@999>"
+        interaction.response = MagicMock()
+        interaction.response.send_message = AsyncMock()
+
+        ticket = Ticket(id="ticket-1", status=TicketStatus.OPEN, thread_id="123456")
+
+        with (
+            patch.object(TicketManager, "get_ticket_by_thread_id", AsyncMock(return_value=ticket)),
+            patch.object(TicketManager, "claim_ticket", AsyncMock(return_value=True)),
+        ):
+            asyncio.run(cog.ticket_claim.callback(cog, interaction))
+
+        thread.add_user.assert_awaited_once_with(interaction.user)
+        interaction.response.send_message.assert_awaited_once()
 
 
 if __name__ == "__main__":

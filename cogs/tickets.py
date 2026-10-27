@@ -126,6 +126,23 @@ class TicketsCog(commands.Cog, name="Tickets"):
 
         await TicketManager.claim_ticket(ticket.id, admin_user)
 
+        thread = interaction.channel if isinstance(interaction.channel, discord.Thread) else None
+        if not thread and ticket:
+            thread_id = ticket.thread_id or (ticket.discord_meta.thread_id if ticket.discord_meta else None)
+            if thread_id and interaction.guild:
+                thread = interaction.guild.get_thread(int(thread_id))
+                if not thread:
+                    try:
+                        thread = await interaction.guild.fetch_channel(int(thread_id))
+                    except Exception:
+                        thread = None
+
+        if isinstance(thread, discord.Thread):
+            try:
+                await thread.add_user(interaction.user)
+            except Exception as e:
+                print(f"[TicketsCog] Could not add admin {interaction.user.id} to thread: {e}")
+
         claim_embed = discord.Embed(
             description=f"🙋‍♂️ **Ticket Claimed!**\n{interaction.user.mention} has claimed this ticket and will lead the resolution.",
             color=0xFEE75C
