@@ -32,12 +32,24 @@ class DiscordQueueManager:
         self._workers: List[asyncio.Task] = []
         self._in_flight: set[str] = set()
 
+    def _ensure_queues_for_current_loop(self):
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        if getattr(self.action_queue, "_loop", None) not in (None, loop):
+            self.action_queue = asyncio.Queue()
+            self._workers = [w for w in self._workers if not w.done() and getattr(w, "get_loop", lambda: None)() is loop]
+        if getattr(self.dm_queue, "_loop", None) not in (None, loop):
+            self.dm_queue = asyncio.Queue()
+            self._workers = [w for w in self._workers if not w.done() and getattr(w, "get_loop", lambda: None)() is loop]
+
     def start(self):
         """Start worker loops inside FastAPI lifespan or application startup."""
-        # Filter out dead workers if any
-        self._workers = [w for w in self._workers if not w.done()]
+        self._ensure_queues_for_current_loop()
+        loop = asyncio.get_running_loop()
+        self._workers = [w for w in self._workers if not w.done() and getattr(w, "get_loop", lambda: None)() is loop]
         if not self._workers:
-            loop = asyncio.get_running_loop()
             self._workers = [
                 loop.create_task(self._action_worker(), name="discord-action-worker"),
                 loop.create_task(self._dm_worker(), name="discord-dm-worker"),
@@ -56,11 +68,15 @@ class DiscordQueueManager:
                 if not w.done():
                     w.cancel()
             self._workers.clear()
+            self._in_flight.clear()
+            self.action_queue = asyncio.Queue()
+            self.dm_queue = asyncio.Queue()
             logger.info("[DiscordQueue] Background workers stopped.")
 
     async def drain(self, timeout: float = 5.0):
         """Wait until all current items in both queues have been processed."""
         # Ensure workers are alive to process items
+        self._ensure_queues_for_current_loop()
         self._ensure_workers_started()
         await asyncio.wait_for(
             asyncio.gather(self.action_queue.join(), self.dm_queue.join()),
@@ -71,7 +87,9 @@ class DiscordQueueManager:
         """Auto-start workers if an event loop is running and workers are not active."""
         try:
             loop = asyncio.get_running_loop()
-            if loop.is_running() and not any(not w.done() for w in self._workers):
+            self._ensure_queues_for_current_loop()
+            active_workers = [w for w in self._workers if not w.done() and getattr(w, "get_loop", lambda: None)() is loop]
+            if loop.is_running() and not active_workers:
                 self.start()
         except RuntimeError:
             pass
@@ -89,6 +107,7 @@ class DiscordQueueManager:
                 return False
             self._in_flight.add(task.dedup_key)
 
+        self._ensure_queues_for_current_loop()
         self._ensure_workers_started()
 
         if task.task_type == "direct_message":
