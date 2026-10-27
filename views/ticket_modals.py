@@ -110,7 +110,7 @@ async def create_ticket_thread_and_doc(
         # Add initial creation message to the Firestore messages subcollection
         initial_msg = TicketMessage(
             sender_id=str(interaction.user.id),
-            sender_name=interaction.user.name,
+            sender_name=ticket.created_by_name or interaction.user.name,
             sender_avatar=interaction.user.display_avatar.url if interaction.user.display_avatar else None,
             sender_role="user",
             source="discord",

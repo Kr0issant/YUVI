@@ -15,7 +15,8 @@ class TranscriptGenerator:
         lines.append(f"Subject:     {ticket.title}")
         lines.append(f"Status:      {ticket.status.label if hasattr(ticket.status, 'label') else ticket.status}")
         if ticket.created_by:
-            lines.append(f"Created By:  {ticket.created_by.username} ({ticket.created_by.discord_id})")
+            creator_name = f"{ticket.created_by_name} ({ticket.created_by.username})" if ticket.created_by_name else ticket.created_by.username
+            lines.append(f"Created By:  {creator_name} ({ticket.created_by.discord_id})")
         if ticket.assigned_to:
             lines.append(f"Assigned To: {ticket.assigned_to.username} ({ticket.assigned_to.discord_id})")
         if ticket.closed_by:

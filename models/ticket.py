@@ -216,6 +216,9 @@ class Ticket:
     priority: TicketPriority = TicketPriority.MEDIUM
     created_by: Optional[TicketUser] = None
     created_by_uid: Optional[str] = None
+    created_by_name: Optional[str] = None
+    created_by_email: Optional[str] = None
+    created_by_avatar: Optional[str] = None
     assigned_to: Optional[TicketUser] = None
     assigned_to_uid: Optional[str] = None
     closed_by: Optional[TicketUser] = None
@@ -245,6 +248,9 @@ class Ticket:
             "priority": self.priority.value if isinstance(self.priority, TicketPriority) else str(self.priority),
             "created_by": self.created_by.to_dict() if self.created_by else None,
             "created_by_uid": c_uid,
+            "created_by_name": self.created_by_name,
+            "created_by_email": self.created_by_email,
+            "created_by_avatar": self.created_by_avatar,
             "assigned_to": self.assigned_to.to_dict() if self.assigned_to else None,
             "assigned_to_uid": a_uid,
             "closed_by": self.closed_by.to_dict() if self.closed_by else None,
@@ -294,6 +300,9 @@ class Ticket:
             priority=priority,
             created_by=TicketUser.from_dict(data.get("created_by")),
             created_by_uid=data.get("created_by_uid"),
+            created_by_name=data.get("created_by_name"),
+            created_by_email=data.get("created_by_email"),
+            created_by_avatar=data.get("created_by_avatar"),
             assigned_to=TicketUser.from_dict(data.get("assigned_to")),
             assigned_to_uid=data.get("assigned_to_uid"),
             closed_by=TicketUser.from_dict(data.get("closed_by")),

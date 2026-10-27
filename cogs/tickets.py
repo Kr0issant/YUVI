@@ -200,7 +200,11 @@ class TicketsCog(commands.Cog, name="Tickets"):
         embed.add_field(name="Status", value=ticket.status.label, inline=True)
         embed.add_field(name="Priority", value=ticket.priority.value.capitalize(), inline=True)
         
-        creator_str = f"{ticket.created_by.username} (<@{ticket.created_by.discord_id}>)" if ticket.created_by else "Unknown"
+        if ticket.created_by:
+            name_part = f"{ticket.created_by_name} ({ticket.created_by.username})" if ticket.created_by_name else ticket.created_by.username
+            creator_str = f"{name_part} (<@{ticket.created_by.discord_id}>)"
+        else:
+            creator_str = "Unknown"
         embed.add_field(name="Created By", value=creator_str, inline=False)
 
         assigned_str = f"{ticket.assigned_to.username} (<@{ticket.assigned_to.discord_id}>)" if ticket.assigned_to else "Unassigned"
@@ -240,7 +244,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         )
 
         for t in tickets:
-            creator_name = t.created_by.username if t.created_by else "Unknown"
+            creator_name = t.created_by_name or (t.created_by.username if t.created_by else "Unknown")
             thread_mention = f"<#{t.discord_meta.thread_id}>" if t.discord_meta and t.discord_meta.thread_id else "N/A"
             assigned_name = t.assigned_to.username if t.assigned_to else "Unassigned"
 

@@ -32,6 +32,16 @@ class TicketManager:
                     ticket.created_by_uid = verified_uid_for_discord(
                         db, ticket.created_by.discord_id
                     )
+                if ticket.created_by_uid and not ticket.created_by_name:
+                    try:
+                        u_doc = db.collection("users").document(ticket.created_by_uid).get()
+                        if getattr(u_doc, "exists", False) is True:
+                            u_data = u_doc.to_dict() or {}
+                            ticket.created_by_name = u_data.get("full_name") or u_data.get("name")
+                            ticket.created_by_email = u_data.get("email")
+                            ticket.created_by_avatar = u_data.get("avatar_url") or u_data.get("photo_url")
+                    except Exception as err:
+                        print(f"[TicketManager] Warning: failed to fetch user doc for {ticket.created_by_uid}: {err}")
                 doc_ref = db.collection(TICKETS_COLLECTION).document()
                 ticket.id = doc_ref.id
                 doc_data = ticket.to_dict()

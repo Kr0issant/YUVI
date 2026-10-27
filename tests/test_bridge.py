@@ -501,6 +501,34 @@ class TicketContractTests(unittest.TestCase):
         self.assertEqual(db.collection.return_value.document.return_value.set.call_args.args[0]["created_by_uid"], "uid-1")
         member_post.assert_not_awaited()
 
+    def test_discord_ticket_stores_verified_member_full_name(self):
+        db = MagicMock()
+        db.collection.return_value.document.return_value.id = "ticket-1"
+        u_doc = MagicMock()
+        u_doc.exists = True
+        u_doc.to_dict.return_value = {"full_name": "Verified Jane", "email": "jane@sst.scaler.com"}
+
+        def doc_side_effect(doc_id=None):
+            mock_doc = MagicMock()
+            if doc_id == "uid-1":
+                mock_doc.get.return_value = u_doc
+            else:
+                mock_doc.id = "ticket-1"
+            return mock_doc
+
+        db.collection.return_value.document.side_effect = doc_side_effect
+        ticket = Ticket(created_by=TicketUser(discord_id="555", username="Member"))
+        with (
+            patch("utils.ticket_manager.APIClient.post", AsyncMock()) as member_post,
+            patch("utils.ticket_manager.verified_uid_for_discord", return_value="uid-1"),
+            patch.object(TicketManager, "_get_db", return_value=db),
+        ):
+            ticket_id = asyncio.run(TicketManager.create_ticket(ticket))
+        self.assertEqual(ticket_id, "ticket-1")
+        self.assertEqual(ticket.created_by_name, "Verified Jane")
+        self.assertEqual(ticket.created_by_email, "jane@sst.scaler.com")
+        member_post.assert_not_awaited()
+
     def test_discord_claim_and_close_use_member_uids_without_member_close_endpoint(self):
         db = MagicMock()
         ticket_ref = db.collection.return_value.document.return_value
