@@ -157,14 +157,12 @@ async def create_ticket_thread_and_doc(
     from views.ticket_controls import TicketControlView
     control_view = TicketControlView()
 
-    # Ping admin/support role if configured
-    admin_role_id = os.getenv("ADMIN_ROLE_ID") or os.getenv("SUPPORT_ROLE_ID")
-    admin_mention = f"<@&{admin_role_id}>" if admin_role_id else ""
-
+    # Do not ping admin role into private thread to avoid auto-adding all admins
     control_msg = await thread.send(
-        content=f"{interaction.user.mention} {admin_mention}",
+        content=interaction.user.mention,
         embed=embed,
-        view=control_view
+        view=control_view,
+        allowed_mentions=discord.AllowedMentions(users=True, roles=False)
     )
 
     # Update control message ID in Firestore

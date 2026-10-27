@@ -688,6 +688,56 @@ class TicketContractTests(unittest.TestCase):
         self.assertIn("Verification Required", interaction.followup.send.call_args.args[0])
         interaction.guild.get_channel.assert_not_called()
 
+    def test_create_ticket_thread_and_doc_does_not_ping_or_assign_admin_role(self):
+        import discord
+        from models.ticket import TicketCategory
+        interaction = MagicMock(spec=discord.Interaction)
+        guild = MagicMock(spec=discord.Guild)
+        interaction.guild = guild
+        interaction.user = MagicMock(spec=discord.Member)
+        interaction.user.id = 12345
+        interaction.user.name = "VerifiedUser"
+        interaction.user.mention = "<@12345>"
+        interaction.user.display_avatar = None
+        interaction.response = MagicMock()
+        interaction.response.defer = AsyncMock()
+        interaction.followup = MagicMock()
+        interaction.followup.send = AsyncMock()
+
+        channel = MagicMock(spec=discord.TextChannel)
+        guild.get_channel.return_value = channel
+        thread = MagicMock(spec=discord.Thread)
+        thread.id = 777777
+        thread.mention = "<#777777>"
+        thread.add_user = AsyncMock()
+        control_msg = MagicMock()
+        control_msg.id = 55555
+        thread.send = AsyncMock(return_value=control_msg)
+        channel.create_thread = AsyncMock(return_value=thread)
+
+        with (
+            patch.object(UserManager, "is_user_verified", AsyncMock(return_value=True)),
+            patch.object(TicketManager, "create_ticket", AsyncMock(return_value="t-123")),
+            patch.object(TicketManager, "add_ticket_message", AsyncMock(return_value="m-1")),
+            patch.object(TicketManager, "update_ticket", AsyncMock(return_value=None)),
+            patch.dict(os.environ, {"ADMIN_ROLE_ID": "999999", "TICKETS_CHANNEL_ID": "888888"}),
+        ):
+            asyncio.run(create_ticket_thread_and_doc(
+                interaction=interaction,
+                category=TicketCategory.SUPPORT,
+                title="Question",
+                description="General question",
+                fields={}
+            ))
+
+        thread.send.assert_awaited_once()
+        sent_content = thread.send.call_args.kwargs.get("content")
+        self.assertNotIn("<@&999999>", sent_content)
+        self.assertEqual(sent_content, "<@12345>")
+        allowed_mentions = thread.send.call_args.kwargs.get("allowed_mentions")
+        self.assertIsNotNone(allowed_mentions)
+        self.assertFalse(allowed_mentions.roles)
+
 
 if __name__ == "__main__":
     unittest.main()
