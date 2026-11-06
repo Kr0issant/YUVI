@@ -187,14 +187,14 @@ class SPGModal(ui.Modal, title="🚀 SPG Registration / Modification"):
         required=True
     )
     team_leader = ui.TextInput(
-        label="Team Leader Firebase UID",
-        placeholder="Mandatory Firebase UID of team leader (must be club member)",
+        label="Team Leader (Email, Mention, or leave blank if you)",
+        placeholder="Leave blank if you are the leader, or student email / @mention",
         max_length=128,
-        required=True
+        required=False
     )
     team_members = ui.TextInput(
-        label="Team Member UIDs (Optional, max 6)",
-        placeholder="One Firebase UID per line (newline-separated, up to 6 members)",
+        label="Team Members (Emails or Mentions, max 6)",
+        placeholder="One member per line (student email, @mention, or name, up to 6 members)",
         style=discord.TextStyle.paragraph,
         max_length=1000,
         required=False
@@ -210,22 +210,69 @@ class SPGModal(ui.Modal, title="🚀 SPG Registration / Modification"):
         await interaction.response.defer(ephemeral=True)
         import re
 
-        leader_uid = self.team_leader.value.strip()
-        if "(" in leader_uid and leader_uid.endswith(")"):
-            leader_uid = leader_uid.split("(")[-1].rstrip(")")
+        raw_leader = self.team_leader.value.strip() if self.team_leader.value else ""
+        if "(" in raw_leader and raw_leader.endswith(")"):
+            raw_leader = raw_leader.split("(")[-1].rstrip(")")
 
-        member_uids = [
+        # Resolve leader identity
+        leader_uid = None
+        leader_display = None
+
+        if not raw_leader or raw_leader.lower() in ("me", "self", "i am leader"):
+            # Submitter is the leader
+            submitter_user = await UserManager.get_user(str(interaction.user.id))
+            if submitter_user:
+                leader_uid = submitter_user.get("doc_id") or submitter_user.get("id") or str(interaction.user.id)
+                leader_name = submitter_user.get("full_name") or interaction.user.name
+                leader_email = submitter_user.get("email") or ""
+                leader_display = f"{leader_name} ({leader_email})" if leader_email else leader_name
+            else:
+                leader_uid = str(interaction.user.id)
+                leader_display = interaction.user.name
+        else:
+            if "@" in raw_leader and not raw_leader.startswith("<@"):
+                user = await UserManager.get_user_by_email(raw_leader)
+                if user:
+                    leader_uid = user.get("doc_id") or user.get("id") or raw_leader
+                    leader_display = f"{user.get('full_name') or raw_leader} ({user.get('email') or raw_leader})"
+                else:
+                    leader_uid = raw_leader
+                    leader_display = raw_leader
+            elif raw_leader.replace("<@", "").replace(">", "").replace("!", "").isdigit():
+                clean_did = raw_leader.replace("<@", "").replace(">", "").replace("!", "")
+                user = await UserManager.get_user(clean_did)
+                if user:
+                    leader_uid = user.get("doc_id") or user.get("id") or clean_did
+                    leader_display = f"{user.get('full_name') or clean_did} ({user.get('email') or clean_did})"
+                else:
+                    leader_uid = clean_did
+                    leader_display = raw_leader
+            else:
+                leader_uid = raw_leader
+                leader_display = raw_leader
+
+        raw_member_lines = [
             line.strip()
-            for line in self.team_members.value.splitlines()
+            for line in (self.team_members.value or "").splitlines()
             if line.strip() and line.strip().lower() != "none"
         ]
-        # Clean any appended names or parentheses if provided
         cleaned_members = []
-        for m in member_uids:
+        for line in raw_member_lines:
+            m = line
             if "(" in m and m.endswith(")"):
                 m = m.split("(")[-1].rstrip(")")
-            if m and m != leader_uid and m not in cleaned_members:
-                cleaned_members.append(m)
+            if "@" in m and not m.startswith("<@"):
+                u = await UserManager.get_user_by_email(m)
+                resolved_id = u.get("doc_id") or u.get("id") if u else m
+            elif m.replace("<@", "").replace(">", "").replace("!", "").isdigit():
+                did = m.replace("<@", "").replace(">", "").replace("!", "")
+                u = await UserManager.get_user(did)
+                resolved_id = u.get("doc_id") or u.get("id") if u else did
+            else:
+                resolved_id = m
+
+            if resolved_id and resolved_id != leader_uid and resolved_id not in cleaned_members:
+                cleaned_members.append(resolved_id)
 
         if len(cleaned_members) > 6:
             await interaction.followup.send("❌ Maximum 6 team members allowed (excluding team leader).", ephemeral=True)
@@ -252,8 +299,9 @@ class SPGModal(ui.Modal, title="🚀 SPG Registration / Modification"):
             "duration_days": duration_days,
             "frequency_days": frequency_days,
             "Project Name": self.project_name.value.strip(),
+            "Group Type": "Project Group",
             "Track": track_clean,
-            "Team Leader": leader_uid,
+            "Team Leader": leader_display or leader_uid,
             "Team Members": ", ".join(cleaned_members) if cleaned_members else "None",
             "Duration (Days)": duration_days,
             "Report Frequency (Days)": frequency_days,
@@ -262,7 +310,7 @@ class SPGModal(ui.Modal, title="🚀 SPG Registration / Modification"):
             interaction=interaction,
             category=TicketCategory.SPG_REGISTRATION,
             title=f"SPG: {self.project_name.value.strip()} ({track_clean})",
-            description=f"Project Group: {self.project_name.value.strip()} | Track: {track_clean} | Leader: {leader_uid} | Duration: {duration_days} days | Frequency: every {frequency_days} days",
+            description=f"Project Group: {self.project_name.value.strip()} | Track: {track_clean} | Leader: {leader_display or leader_uid} | Duration: {duration_days} days | Frequency: every {frequency_days} days",
             fields=fields
         )
 
@@ -379,6 +427,8 @@ class SupportInquiryModal(ui.Modal, title="💬 Support & General Inquiries"):
 
     async def on_submit(self, interaction: discord.Interaction):
         fields = {
+            "Subject": self.subject.value,
+            "Details": self.details.value,
             "subject": self.subject.value,
             "details": self.details.value
         }
@@ -498,6 +548,8 @@ class FeedbackModal(ui.Modal, title="📝 Suggestions & Feedback"):
 
     async def on_submit(self, interaction: discord.Interaction):
         fields = {
+            "Feedback Topic": self.topic.value.strip(),
+            "Feedback Details": self.comments.value.strip(),
             "Suggestion Topic": self.topic.value.strip(),
             "Details": self.comments.value.strip(),
             "topic": self.topic.value.strip(),
@@ -529,6 +581,8 @@ class ReportModal(ui.Modal, title="🛡️ Report Issue / Misconduct (Confidenti
 
     async def on_submit(self, interaction: discord.Interaction):
         fields = {
+            "Incident Summary": self.summary.value,
+            "Report Details": self.description.value,
             "incident_summary": self.summary.value,
             "confidential_details": self.description.value
         }
@@ -558,6 +612,8 @@ class MiscModal(ui.Modal, title="📦 General Ticket"):
 
     async def on_submit(self, interaction: discord.Interaction):
         fields = {
+            "Subject": self.subject.value,
+            "Details": self.details.value,
             "subject": self.subject.value,
             "details": self.details.value
         }
