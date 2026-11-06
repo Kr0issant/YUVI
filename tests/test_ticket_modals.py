@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from types import SimpleNamespace
 
 from views.ticket_modals import (
+    SPGModal,
     ProjectGroupRegistrationModal,
     ComputeResourceRequestModal,
     LearningResourceRequestModal,

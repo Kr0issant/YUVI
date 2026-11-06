@@ -315,6 +315,9 @@ class SPGModal(ui.Modal, title="🚀 SPG Registration / Modification"):
         )
 
 
+ProjectGroupRegistrationModal = SPGModal
+
+
 class ComputeResourceRequestModal(ui.Modal, title="⚡ Compute Resource Request (SPGs Only)"):
     project_name = ui.TextInput(
         label="Registered SPG Project Name",

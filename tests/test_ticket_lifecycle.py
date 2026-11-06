@@ -1,3 +1,4 @@
+import io
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 from types import SimpleNamespace
@@ -58,7 +59,7 @@ class TicketLifecycleTestSuite(unittest.IsolatedAsyncioTestCase):
     ):
         mock_get_ticket.return_value = self._create_mock_ticket()
         mock_get_msgs.return_value = []
-        mock_gen_transcript.return_value = b"Transcript contents"
+        mock_gen_transcript.return_value = io.BytesIO(b"Transcript contents")
 
         interaction = AsyncMock()
         interaction.channel = FakeTicketThread()
