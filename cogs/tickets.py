@@ -11,6 +11,7 @@ from models.ticket import (
 )
 from utils.ticket_manager import TicketManager
 from utils.transcript_generator import TranscriptGenerator
+from utils.user_manager import UserManager
 from views.ticket_panel import TicketPanelView
 from views.ticket_controls import TicketControlView, CloseReasonModal
 
@@ -111,6 +112,10 @@ class TicketsCog(commands.Cog, name="Tickets"):
     async def ticket_claim(self, interaction: discord.Interaction):
         if not isinstance(interaction.channel, (discord.Thread, discord.TextChannel)):
             await interaction.response.send_message("❌ This command can only be used inside a ticket thread.", ephemeral=True)
+            return
+
+        if not await UserManager.is_user_admin(interaction.user, interaction.guild):
+            await interaction.response.send_message("❌ Only admins can claim tickets.", ephemeral=True)
             return
 
         ticket = await TicketManager.get_ticket_by_thread_id(str(interaction.channel.id))
@@ -309,9 +314,14 @@ class TicketsCog(commands.Cog, name="Tickets"):
         # Capture attachment URLs
         attachments = [att.url for att in message.attachments] if message.attachments else []
 
+        # Resolve sender display name (server nickname / student name)
+        sender_name = getattr(message.author, "display_name", None)
+        if not sender_name or not isinstance(sender_name, str):
+            sender_name = getattr(message.author, "name", "Student")
+
         ticket_msg = TicketMessage(
             sender_id=str(message.author.id),
-            sender_name=message.author.name,
+            sender_name=sender_name,
             sender_avatar=message.author.display_avatar.url if message.author.display_avatar else None,
             sender_role=sender_role,
             source="discord",

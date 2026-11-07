@@ -321,6 +321,31 @@ class BridgeTests(unittest.TestCase):
         self.assertIn("Hello", sent)
         self.assertIn("https://example.test/file", sent)
 
+    def test_relay_uses_sender_name_when_provided(self):
+        ticket = SimpleNamespace(thread_id="333", discord_meta=None)
+        with (
+            patch.object(server, "bot", self.bot),
+            patch.object(
+                server.TicketManager, "get_ticket", AsyncMock(return_value=ticket)
+            ),
+        ):
+            response = self.client.post(
+                "/tickets/relay-message",
+                headers={"X-Internal-Secret": "bridge-secret"},
+                json={
+                    "ticket_id": "tkt-1",
+                    "thread_id": "333",
+                    "sender_uid": "uid-1",
+                    "sender_name": "John Doe",
+                    "content": "Hello from dashboard",
+                    "attachments": [],
+                },
+            )
+        self.assertEqual(response.status_code, 200)
+        sent = self.guild.channel.thread.send.await_args.args[0]
+        self.assertIn("Dashboard message from John Doe", sent)
+        self.assertIn("Hello from dashboard", sent)
+
     def test_thread_creator_must_have_this_uid_verified(self):
         discord_id = "555"
         email = "member@sst.scaler.com"
@@ -602,6 +627,66 @@ class TicketContractTests(unittest.TestCase):
 
         thread.add_user.assert_awaited_once_with(interaction.user)
         interaction.response.send_message.assert_awaited_once()
+
+    def test_ticket_control_claim_button_blocks_non_admin(self):
+        import discord
+        view = TicketControlView()
+        interaction = MagicMock(spec=discord.Interaction)
+        thread = MagicMock(spec=discord.Thread)
+        thread.id = 123456
+        thread.add_user = AsyncMock()
+        interaction.channel = thread
+        interaction.user = MagicMock(spec=discord.Member)
+        interaction.user.id = 12345
+        interaction.user.guild_permissions.administrator = False
+        interaction.user.roles = []
+        interaction.response = MagicMock()
+        interaction.response.send_message = AsyncMock()
+
+        ticket = Ticket(id="ticket-1", status=TicketStatus.OPEN, thread_id="123456")
+
+        with (
+            patch.object(TicketManager, "get_ticket_by_thread_id", AsyncMock(return_value=ticket)),
+            patch.object(TicketManager, "claim_ticket", AsyncMock(return_value=True)) as mock_claim,
+            patch.object(UserManager, "is_user_admin", AsyncMock(return_value=False)),
+        ):
+            asyncio.run(view.claim_button.callback(interaction))
+
+        mock_claim.assert_not_awaited()
+        thread.add_user.assert_not_awaited()
+        interaction.response.send_message.assert_awaited_once_with(
+            "❌ Only admins can claim tickets.", ephemeral=True
+        )
+
+    def test_slash_ticket_claim_blocks_non_admin(self):
+        import discord
+        cog = TicketsCog(MagicMock())
+        interaction = MagicMock(spec=discord.Interaction)
+        thread = MagicMock(spec=discord.Thread)
+        thread.id = 123456
+        thread.add_user = AsyncMock()
+        interaction.channel = thread
+        interaction.user = MagicMock(spec=discord.Member)
+        interaction.user.id = 12345
+        interaction.user.guild_permissions.administrator = False
+        interaction.user.roles = []
+        interaction.response = MagicMock()
+        interaction.response.send_message = AsyncMock()
+
+        ticket = Ticket(id="ticket-1", status=TicketStatus.OPEN, thread_id="123456")
+
+        with (
+            patch.object(TicketManager, "get_ticket_by_thread_id", AsyncMock(return_value=ticket)),
+            patch.object(TicketManager, "claim_ticket", AsyncMock(return_value=True)) as mock_claim,
+            patch.object(UserManager, "is_user_admin", AsyncMock(return_value=False)),
+        ):
+            asyncio.run(cog.ticket_claim.callback(cog, interaction))
+
+        mock_claim.assert_not_awaited()
+        thread.add_user.assert_not_awaited()
+        interaction.response.send_message.assert_awaited_once_with(
+            "❌ Only admins can claim tickets.", ephemeral=True
+        )
 
     def test_user_manager_is_user_verified_by_role(self):
         import discord
