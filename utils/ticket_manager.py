@@ -211,7 +211,18 @@ class TicketManager:
             messages = []
             for d in docs:
                 messages.append(TicketMessage.from_dict(d.id, d.to_dict()))
-            messages.reverse()
+
+            def _parse_ts(ts):
+                if not ts:
+                    return 0.0
+                if hasattr(ts, "timestamp") and callable(ts.timestamp):
+                    return ts.timestamp()
+                try:
+                    return datetime.fromisoformat(str(ts).replace("Z", "+00:00")).timestamp()
+                except Exception:
+                    return 0.0
+
+            messages.sort(key=lambda m: _parse_ts(m.timestamp))
             return messages
 
         return await asyncio.to_thread(_sync_get_messages)
