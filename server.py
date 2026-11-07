@@ -68,7 +68,7 @@ class CreateTicketThreadRequest(BaseModel):
 
 
 class RelayTicketMessageRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     ticket_id: str = Field(min_length=1)
     thread_id: str = Field(min_length=1)
@@ -594,6 +594,7 @@ async def relay_ticket_message(
 ):
     """Relay a dashboard-authored message into its linked Discord thread."""
     require_internal_secret(x_internal_secret)
+    print(f"[Server] Received relay request for ticket {payload.ticket_id} to thread {payload.thread_id}")
     ticket = await TicketManager.get_ticket(payload.ticket_id)
     linked_thread_id = None
     if ticket:
@@ -601,6 +602,7 @@ async def relay_ticket_message(
             ticket.discord_meta.thread_id if ticket.discord_meta else None
         )
     if not ticket or str(linked_thread_id) != payload.thread_id:
+        print(f"[Server] Relay rejected: ticket={bool(ticket)}, linked_thread_id={linked_thread_id}, payload_thread_id={payload.thread_id}")
         raise HTTPException(
             status_code=409, detail="Ticket is not linked to that Discord thread"
         )
@@ -626,6 +628,7 @@ async def relay_ticket_message(
         )
         for index in range(0, len(content), 1900)
     ]
+    print(f"[Server] Relayed message to Discord thread {payload.thread_id} ({len(messages)} parts sent)")
     return {
         "success": True,
         "discord_message_id": str(messages[-1].id),
