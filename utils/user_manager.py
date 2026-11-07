@@ -140,3 +140,41 @@ class UserManager:
                 return False
 
         return await asyncio.to_thread(_sync_check)
+
+    @classmethod
+    async def is_user_admin(
+        cls,
+        user: Any,
+        guild: Optional[Any] = None
+    ) -> bool:
+        """Check whether a user is an administrator via Discord permissions/roles or in Firestore."""
+        # 1. Check roles/permissions if member or can be resolved as member
+        member = user if hasattr(user, "roles") else (guild.get_member(user.id) if guild and hasattr(guild, "get_member") else None)
+
+        if member:
+            # Discord Administrators are always authorized
+            permissions = getattr(member, "guild_permissions", None)
+            if permissions and getattr(permissions, "administrator", False):
+                return True
+
+            role_ids = {str(getattr(r, "id", "")) for r in getattr(member, "roles", [])}
+            admin_role_id = os.getenv("ADMIN_ROLE_ID")
+            support_role_id = os.getenv("SUPPORT_ROLE_ID")
+
+            for rid in (admin_role_id, support_role_id):
+                if rid and str(rid).strip() in role_ids:
+                    return True
+
+            for r in getattr(member, "roles", []):
+                if getattr(r, "name", "").lower() in ("admin", "administrator", "lead"):
+                    return True
+
+        # 2. Check Firestore canonical user record
+        try:
+            user_data = await cls.get_user(str(getattr(user, "id", user)))
+            if user_data and (user_data.get("is_admin") is True or str(user_data.get("role", "")).lower() in ("admin", "superadmin", "lead")):
+                return True
+        except Exception as e:
+            print(f"[UserManager] Error checking admin status in Firestore for {getattr(user, 'id', user)}: {e}")
+
+        return False

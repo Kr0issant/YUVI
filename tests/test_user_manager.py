@@ -1,3 +1,4 @@
+import os
 import unittest
 from unittest.mock import MagicMock, patch
 from types import SimpleNamespace
@@ -114,6 +115,53 @@ class UserManagerTestSuite(unittest.IsolatedAsyncioTestCase):
             guild_permissions=SimpleNamespace(administrator=False),
         )
         self.assertFalse(await UserManager.is_user_verified(user))
+
+    async def test_is_user_admin_by_administrator_permission(self):
+        user = SimpleNamespace(
+            id=111,
+            roles=[],
+            guild_permissions=SimpleNamespace(administrator=True),
+        )
+        self.assertTrue(await UserManager.is_user_admin(user))
+
+    async def test_is_user_admin_by_role_id(self):
+        role_admin = SimpleNamespace(id=12345, name="SomeRole")
+        user = SimpleNamespace(
+            id=222,
+            roles=[role_admin],
+            guild_permissions=SimpleNamespace(administrator=False),
+        )
+        with patch.dict(os.environ, {"ADMIN_ROLE_ID": "12345"}):
+            self.assertTrue(await UserManager.is_user_admin(user))
+
+    async def test_is_user_admin_by_role_name(self):
+        role_admin = SimpleNamespace(id=999, name="Admin")
+        user = SimpleNamespace(
+            id=222,
+            roles=[role_admin],
+            guild_permissions=SimpleNamespace(administrator=False),
+        )
+        self.assertTrue(await UserManager.is_user_admin(user))
+
+    @patch.object(UserManager, "get_user")
+    async def test_is_user_admin_by_firestore_doc(self, mock_get_user):
+        mock_get_user.return_value = {"is_admin": True}
+        user = SimpleNamespace(
+            id=333,
+            roles=[],
+            guild_permissions=SimpleNamespace(administrator=False),
+        )
+        self.assertTrue(await UserManager.is_user_admin(user))
+
+    @patch.object(UserManager, "get_user")
+    async def test_is_user_admin_returns_false_for_regular_user(self, mock_get_user):
+        mock_get_user.return_value = {"is_admin": False, "role": "member"}
+        user = SimpleNamespace(
+            id=444,
+            roles=[SimpleNamespace(id=888, name="Student")],
+            guild_permissions=SimpleNamespace(administrator=False),
+        )
+        self.assertFalse(await UserManager.is_user_admin(user))
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ from typing import Optional
 from models.ticket import TicketStatus, TicketUser
 from utils.ticket_manager import TicketManager
 from utils.transcript_generator import TranscriptGenerator
+from utils.user_manager import UserManager
 
 class CloseReasonModal(ui.Modal, title="🔒 Close Ticket"):
     reason = ui.TextInput(
@@ -129,6 +130,10 @@ class TicketControlView(ui.View):
     async def claim_button(self, interaction: discord.Interaction, button: ui.Button):
         if not isinstance(interaction.channel, (discord.Thread, discord.TextChannel)):
             await interaction.response.send_message("❌ Action can only be performed in a ticket channel/thread.", ephemeral=True)
+            return
+
+        if not await UserManager.is_user_admin(interaction.user, interaction.guild):
+            await interaction.response.send_message("❌ Only admins can claim tickets.", ephemeral=True)
             return
 
         ticket = await TicketManager.get_ticket_by_thread_id(str(interaction.channel.id))
