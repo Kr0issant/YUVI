@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from utils.firestore_client import get_firestore_client
 from utils.ticket_manager import TicketManager
+from utils.user_manager import UserManager
 from views.ticket_controls import TicketControlView
 from yuvi_bot import YuviBot
 from utils.auth_links import require_verified_link, verified_uid_for_discord
@@ -72,6 +73,7 @@ class RelayTicketMessageRequest(BaseModel):
     ticket_id: str = Field(min_length=1)
     thread_id: str = Field(min_length=1)
     sender_uid: str = Field(min_length=1)
+    sender_name: Optional[str] = Field(default=None, max_length=200)
     content: str = Field(min_length=1, max_length=4000)
     attachments: list[str] = Field(default_factory=list, max_length=10)
 
@@ -614,7 +616,8 @@ async def relay_ticket_message(
                 status_code=404, detail="Discord ticket thread was not found"
             ) from exc
     attachment_lines = "\n".join(payload.attachments)
-    content = f"**Dashboard message from `{payload.sender_uid}`**\n{payload.content}"
+    sender_display = payload.sender_name or payload.sender_uid
+    content = f"**Dashboard message from {sender_display}**\n{payload.content}"
     if attachment_lines:
         content = f"{content}\n{attachment_lines}"
     messages = [

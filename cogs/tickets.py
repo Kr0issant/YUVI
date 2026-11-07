@@ -314,9 +314,14 @@ class TicketsCog(commands.Cog, name="Tickets"):
         # Capture attachment URLs
         attachments = [att.url for att in message.attachments] if message.attachments else []
 
+        # Resolve sender display name (server nickname / student name)
+        sender_name = getattr(message.author, "display_name", None)
+        if not sender_name or not isinstance(sender_name, str):
+            sender_name = getattr(message.author, "name", "Student")
+
         ticket_msg = TicketMessage(
             sender_id=str(message.author.id),
-            sender_name=message.author.name,
+            sender_name=sender_name,
             sender_avatar=message.author.display_avatar.url if message.author.display_avatar else None,
             sender_role=sender_role,
             source="discord",

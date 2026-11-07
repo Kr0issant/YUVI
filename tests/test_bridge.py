@@ -321,6 +321,31 @@ class BridgeTests(unittest.TestCase):
         self.assertIn("Hello", sent)
         self.assertIn("https://example.test/file", sent)
 
+    def test_relay_uses_sender_name_when_provided(self):
+        ticket = SimpleNamespace(thread_id="333", discord_meta=None)
+        with (
+            patch.object(server, "bot", self.bot),
+            patch.object(
+                server.TicketManager, "get_ticket", AsyncMock(return_value=ticket)
+            ),
+        ):
+            response = self.client.post(
+                "/tickets/relay-message",
+                headers={"X-Internal-Secret": "bridge-secret"},
+                json={
+                    "ticket_id": "tkt-1",
+                    "thread_id": "333",
+                    "sender_uid": "uid-1",
+                    "sender_name": "John Doe",
+                    "content": "Hello from dashboard",
+                    "attachments": [],
+                },
+            )
+        self.assertEqual(response.status_code, 200)
+        sent = self.guild.channel.thread.send.await_args.args[0]
+        self.assertIn("Dashboard message from John Doe", sent)
+        self.assertIn("Hello from dashboard", sent)
+
     def test_thread_creator_must_have_this_uid_verified(self):
         discord_id = "555"
         email = "member@sst.scaler.com"
